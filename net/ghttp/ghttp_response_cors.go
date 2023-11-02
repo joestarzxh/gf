@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -8,10 +8,11 @@
 package ghttp
 
 import (
-	"github.com/gogf/gf/text/gstr"
-	"github.com/gogf/gf/util/gconv"
 	"net/http"
 	"net/url"
+
+	"github.com/gogf/gf/v2/text/gstr"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
 // CORSOptions is the options for CORS feature.
@@ -28,7 +29,7 @@ type CORSOptions struct {
 
 var (
 	// defaultAllowHeaders is the default allowed headers for CORS.
-	// It's defined another map for better header key searching performance.
+	// It defined another map for better header key searching performance.
 	defaultAllowHeaders    = "Origin,Content-Type,Accept,User-Agent,Cookie,Authorization,X-Auth-Token,X-Requested-With"
 	defaultAllowHeadersMap = make(map[string]struct{})
 )
@@ -45,7 +46,7 @@ func init() {
 func (r *Response) DefaultCORSOptions() CORSOptions {
 	options := CORSOptions{
 		AllowOrigin:      "*",
-		AllowMethods:     HTTP_METHODS,
+		AllowMethods:     supportedHttpMethods,
 		AllowCredentials: "true",
 		AllowHeaders:     defaultAllowHeaders,
 		MaxAge:           3628800,
@@ -105,7 +106,7 @@ func (r *Response) CORS(options CORSOptions) {
 	}
 }
 
-// CORSAllowed checks whether the current request origin is allowed cross-domain.
+// CORSAllowedOrigin CORSAllowed checks whether the current request origin is allowed cross-domain.
 func (r *Response) CORSAllowedOrigin(options CORSOptions) bool {
 	if options.AllowDomain == nil {
 		return true

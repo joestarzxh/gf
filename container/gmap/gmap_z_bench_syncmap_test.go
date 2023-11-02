@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with gm file,
@@ -12,10 +12,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gogf/gf/container/gmap"
+	"github.com/gogf/gf/v2/container/gmap"
 )
 
 var gm = gmap.NewIntIntMap(true)
+
 var sm = sync.Map{}
 
 func Benchmark_GMapSet(b *testing.B) {

@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -8,24 +8,27 @@ package grand
 
 import (
 	"crypto/rand"
+
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
 )
 
 const (
 	// Buffer size for uint32 random number.
-	gBUFFER_SIZE = 10000
+	bufferChanSize = 10000
 )
 
 var (
 	// bufferChan is the buffer for random bytes,
 	// every item storing 4 bytes.
-	bufferChan = make(chan []byte, gBUFFER_SIZE)
+	bufferChan = make(chan []byte, bufferChanSize)
 )
 
 func init() {
 	go asyncProducingRandomBufferBytesLoop()
 }
 
-// asyncProducingRandomBufferBytes is a named goroutine, which uses a asynchronous goroutine
+// asyncProducingRandomBufferBytes is a named goroutine, which uses an asynchronous goroutine
 // to produce the random bytes, and a buffer chan to store the random bytes.
 // So it has high performance to generate random numbers.
 func asyncProducingRandomBufferBytesLoop() {
@@ -33,7 +36,7 @@ func asyncProducingRandomBufferBytesLoop() {
 	for {
 		buffer := make([]byte, 1024)
 		if n, err := rand.Read(buffer); err != nil {
-			panic(err)
+			panic(gerror.WrapCode(gcode.CodeInternalError, err, `error reading random buffer from system`))
 		} else {
 			// The random buffer from system is very expensive,
 			// so fully reuse the random buffer by changing

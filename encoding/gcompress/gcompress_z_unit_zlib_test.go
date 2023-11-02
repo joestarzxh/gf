@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,8 +9,8 @@ package gcompress_test
 import (
 	"testing"
 
-	"github.com/gogf/gf/encoding/gcompress"
-	"github.com/gogf/gf/test/gtest"
+	"github.com/gogf/gf/v2/encoding/gcompress"
+	"github.com/gogf/gf/v2/test/gtest"
 )
 
 func Test_Zlib_UnZlib(t *testing.T) {

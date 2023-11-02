@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,11 +9,11 @@
 package guid_test
 
 import (
-	"github.com/gogf/gf/container/gset"
-	"github.com/gogf/gf/util/guid"
 	"testing"
 
-	"github.com/gogf/gf/test/gtest"
+	"github.com/gogf/gf/v2/container/gset"
+	"github.com/gogf/gf/v2/test/gtest"
+	"github.com/gogf/gf/v2/util/guid"
 )
 
 func Test_S(t *testing.T) {

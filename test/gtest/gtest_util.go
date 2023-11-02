@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,49 +9,36 @@ package gtest
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
-	"github.com/gogf/gf/debug/gdebug"
-
-	"github.com/gogf/gf/util/gconv"
+	"github.com/gogf/gf/v2/debug/gdebug"
+	"github.com/gogf/gf/v2/internal/empty"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
 const (
-	gPATH_FILTER_KEY = "/test/gtest/gtest"
+	pathFilterKey = "/test/gtest/gtest"
 )
 
-// C creates an unit testing case.
-// The parameter <t> is the pointer to testing.T of stdlib (*testing.T).
-// The parameter <f> is the closure function for unit testing case.
+// C creates a unit testing case.
+// The parameter `t` is the pointer to testing.T of stdlib (*testing.T).
+// The parameter `f` is the closure function for unit testing case.
 func C(t *testing.T, f func(t *T)) {
 	defer func() {
 		if err := recover(); err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n%s", err, gdebug.StackWithFilter(gPATH_FILTER_KEY))
+			_, _ = fmt.Fprintf(os.Stderr, "%v\n%s", err, gdebug.StackWithFilter([]string{pathFilterKey}))
 			t.Fail()
 		}
 	}()
 	f(&T{t})
 }
 
-// Case creates an unit testing case.
-// The parameter <t> is the pointer to testing.T of stdlib (*testing.T).
-// The parameter <f> is the closure function for unit testing case.
-// Deprecated.
-func Case(t *testing.T, f func()) {
-	defer func() {
-		if err := recover(); err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n%s", err, gdebug.StackWithFilter(gPATH_FILTER_KEY))
-			t.Fail()
-		}
-	}()
-	f()
-}
-
-// Assert checks <value> and <expect> EQUAL.
+// Assert checks `value` and `expect` EQUAL.
 func Assert(value, expect interface{}) {
 	rvExpect := reflect.ValueOf(expect)
-	if isNil(value) {
+	if empty.IsNil(value) {
 		value = nil
 	}
 	if rvExpect.Kind() == reflect.Map {
@@ -69,11 +56,11 @@ func Assert(value, expect interface{}) {
 	}
 }
 
-// AssertEQ checks <value> and <expect> EQUAL, including their TYPES.
+// AssertEQ checks `value` and `expect` EQUAL, including their TYPES.
 func AssertEQ(value, expect interface{}) {
 	// Value assert.
 	rvExpect := reflect.ValueOf(expect)
-	if isNil(value) {
+	if empty.IsNil(value) {
 		value = nil
 	}
 	if rvExpect.Kind() == reflect.Map {
@@ -95,10 +82,10 @@ func AssertEQ(value, expect interface{}) {
 	}
 }
 
-// AssertNE checks <value> and <expect> NOT EQUAL.
+// AssertNE checks `value` and `expect` NOT EQUAL.
 func AssertNE(value, expect interface{}) {
 	rvExpect := reflect.ValueOf(expect)
-	if isNil(value) {
+	if empty.IsNil(value) {
 		value = nil
 	}
 	if rvExpect.Kind() == reflect.Map {
@@ -116,7 +103,7 @@ func AssertNE(value, expect interface{}) {
 	}
 }
 
-// AssertNQ checks <value> and <expect> NOT EQUAL, including their TYPES.
+// AssertNQ checks `value` and `expect` NOT EQUAL, including their TYPES.
 func AssertNQ(value, expect interface{}) {
 	// Type assert.
 	t1 := reflect.TypeOf(value)
@@ -133,7 +120,7 @@ func AssertNQ(value, expect interface{}) {
 	AssertNE(value, expect)
 }
 
-// AssertGT checks <value> is GREATER THAN <expect>.
+// AssertGT checks `value` is GREATER THAN `expect`.
 // Notice that, only string, integer and float types can be compared by AssertGT,
 // others are invalid.
 func AssertGT(value, expect interface{}) {
@@ -156,7 +143,7 @@ func AssertGT(value, expect interface{}) {
 	}
 }
 
-// AssertGE checks <value> is GREATER OR EQUAL THAN <expect>.
+// AssertGE checks `value` is GREATER OR EQUAL THAN `expect`.
 // Notice that, only string, integer and float types can be compared by AssertGTE,
 // others are invalid.
 func AssertGE(value, expect interface{}) {
@@ -183,7 +170,7 @@ func AssertGE(value, expect interface{}) {
 	}
 }
 
-// AssertLT checks <value> is LESS EQUAL THAN <expect>.
+// AssertLT checks `value` is LESS EQUAL THAN `expect`.
 // Notice that, only string, integer and float types can be compared by AssertLT,
 // others are invalid.
 func AssertLT(value, expect interface{}) {
@@ -206,7 +193,7 @@ func AssertLT(value, expect interface{}) {
 	}
 }
 
-// AssertLE checks <value> is LESS OR EQUAL THAN <expect>.
+// AssertLE checks `value` is LESS OR EQUAL THAN `expect`.
 // Notice that, only string, integer and float types can be compared by AssertLTE,
 // others are invalid.
 func AssertLE(value, expect interface{}) {
@@ -229,13 +216,16 @@ func AssertLE(value, expect interface{}) {
 	}
 }
 
-// AssertIN checks <value> is IN <expect>.
-// The <expect> should be a slice,
-// but the <value> can be a slice or a basic type variable.
+// AssertIN checks `value` is IN `expect`.
+// The `expect` should be a slice,
+// but the `value` can be a slice or a basic type variable.
 // TODO map support.
+// TODO: gconv.Strings(0) is not [0]
 func AssertIN(value, expect interface{}) {
-	passed := true
-	expectKind := reflect.ValueOf(expect).Kind()
+	var (
+		passed     = true
+		expectKind = reflect.ValueOf(expect).Kind()
+	)
 	switch expectKind {
 	case reflect.Slice, reflect.Array:
 		expectSlice := gconv.Strings(expect)
@@ -260,13 +250,15 @@ func AssertIN(value, expect interface{}) {
 	}
 }
 
-// AssertNI checks <value> is NOT IN <expect>.
-// The <expect> should be a slice,
-// but the <value> can be a slice or a basic type variable.
+// AssertNI checks `value` is NOT IN `expect`.
+// The `expect` should be a slice,
+// but the `value` can be a slice or a basic type variable.
 // TODO map support.
 func AssertNI(value, expect interface{}) {
-	passed := true
-	expectKind := reflect.ValueOf(expect).Kind()
+	var (
+		passed     = true
+		expectKind = reflect.ValueOf(expect).Kind()
+	)
 	switch expectKind {
 	case reflect.Slice, reflect.Array:
 		for _, v1 := range gconv.Strings(value) {
@@ -290,24 +282,26 @@ func AssertNI(value, expect interface{}) {
 	}
 }
 
-// Error panics with given <message>.
+// Error panics with given `message`.
 func Error(message ...interface{}) {
 	panic(fmt.Sprintf("[ERROR] %s", fmt.Sprint(message...)))
 }
 
-// Fatal prints <message> to stderr and exit the process.
+// Fatal prints `message` to stderr and exit the process.
 func Fatal(message ...interface{}) {
-	fmt.Fprintf(os.Stderr, "[FATAL] %s\n%s", fmt.Sprint(message...), gdebug.StackWithFilter(gPATH_FILTER_KEY))
+	_, _ = fmt.Fprintf(
+		os.Stderr, "[FATAL] %s\n%s", fmt.Sprint(message...),
+		gdebug.StackWithFilter([]string{pathFilterKey}),
+	)
 	os.Exit(1)
 }
 
 // compareMap compares two maps, returns nil if they are equal, or else returns error.
 func compareMap(value, expect interface{}) error {
-	rvValue := reflect.ValueOf(value)
-	rvExpect := reflect.ValueOf(expect)
-	if isNil(value) {
-		value = nil
-	}
+	var (
+		rvValue  = reflect.ValueOf(value)
+		rvExpect = reflect.ValueOf(expect)
+	)
 	if rvExpect.Kind() == reflect.Map {
 		if rvValue.Kind() == reflect.Map {
 			if rvExpect.Len() == rvValue.Len() {
@@ -334,19 +328,44 @@ func compareMap(value, expect interface{}) error {
 				return fmt.Errorf(`[ASSERT] EXPECT MAP LENGTH %d == %d`, rvValue.Len(), rvExpect.Len())
 			}
 		} else {
-			return fmt.Errorf(`[ASSERT] EXPECT VALUE TO BE A MAP`)
+			return fmt.Errorf(`[ASSERT] EXPECT VALUE TO BE A MAP, BUT GIVEN "%s"`, rvValue.Kind())
 		}
 	}
 	return nil
 }
 
-// isNil checks whether <value> is nil.
-func isNil(value interface{}) bool {
-	rv := reflect.ValueOf(value)
-	switch rv.Kind() {
-	case reflect.Slice, reflect.Array, reflect.Map, reflect.Ptr, reflect.Func:
-		return rv.IsNil()
-	default:
-		return value == nil
+// AssertNil asserts `value` is nil.
+func AssertNil(value interface{}) {
+	if empty.IsNil(value) {
+		return
 	}
+	if err, ok := value.(error); ok {
+		panic(fmt.Sprintf(`%+v`, err))
+	}
+	Assert(value, nil)
+}
+
+// DataPath retrieves and returns the testdata path of current package,
+// which is used for unit testing cases only.
+// The optional parameter `names` specifies the sub-folders/sub-files,
+// which will be joined with current system separator and returned with the path.
+func DataPath(names ...string) string {
+	_, path, _ := gdebug.CallerWithFilter([]string{pathFilterKey})
+	path = filepath.Dir(path) + string(filepath.Separator) + "testdata"
+	for _, name := range names {
+		path += string(filepath.Separator) + name
+	}
+	return path
+}
+
+// DataContent retrieves and returns the file content for specified testdata path of current package
+func DataContent(names ...string) string {
+	path := DataPath(names...)
+	if path != "" {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return string(data)
+		}
+	}
+	return ""
 }

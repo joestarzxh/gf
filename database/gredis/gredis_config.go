@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,136 +7,134 @@
 package gredis
 
 import (
-	"github.com/gogf/gf/internal/intlog"
+	"context"
+	"crypto/tls"
 	"time"
 
-	"github.com/gogf/gf/errors/gerror"
-
-	"github.com/gogf/gf/container/gmap"
-	"github.com/gogf/gf/text/gregex"
-	"github.com/gogf/gf/text/gstr"
-	"github.com/gogf/gf/util/gconv"
+	"github.com/gogf/gf/v2/container/gmap"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/internal/intlog"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
+// Config is redis configuration.
+type Config struct {
+	// Address It supports single and cluster redis server. Multiple addresses joined with char ','. Eg: 192.168.1.1:6379, 192.168.1.2:6379.
+	Address         string        `json:"address"`
+	Db              int           `json:"db"`              // Redis db.
+	User            string        `json:"user"`            // Username for AUTH.
+	Pass            string        `json:"pass"`            // Password for AUTH.
+	MinIdle         int           `json:"minIdle"`         // Minimum number of connections allowed to be idle (default is 0)
+	MaxIdle         int           `json:"maxIdle"`         // Maximum number of connections allowed to be idle (default is 10)
+	MaxActive       int           `json:"maxActive"`       // Maximum number of connections limit (default is 0 means no limit).
+	MaxConnLifetime time.Duration `json:"maxConnLifetime"` // Maximum lifetime of the connection (default is 30 seconds, not allowed to be set to 0)
+	IdleTimeout     time.Duration `json:"idleTimeout"`     // Maximum idle time for connection (default is 10 seconds, not allowed to be set to 0)
+	WaitTimeout     time.Duration `json:"waitTimeout"`     // Timed out duration waiting to get a connection from the connection pool.
+	DialTimeout     time.Duration `json:"dialTimeout"`     // Dial connection timeout for TCP.
+	ReadTimeout     time.Duration `json:"readTimeout"`     // Read timeout for TCP. DO NOT set it if not necessary.
+	WriteTimeout    time.Duration `json:"writeTimeout"`    // Write timeout for TCP.
+	MasterName      string        `json:"masterName"`      // Used in Redis Sentinel mode.
+	TLS             bool          `json:"tls"`             // Specifies whether TLS should be used when connecting to the server.
+	TLSSkipVerify   bool          `json:"tlsSkipVerify"`   // Disables server name verification when connecting over TLS.
+	TLSConfig       *tls.Config   `json:"-"`               // TLS Config to use. When set TLS will be negotiated.
+	SlaveOnly       bool          `json:"slaveOnly"`       // Route all commands to slave read-only nodes.
+	Cluster         bool          `json:"cluster"`         // Specifies whether cluster mode be used.
+	Protocol        int           `json:"protocol"`        // Specifies the RESP version (Protocol 2 or 3.)
+}
+
 const (
-	DEFAULT_GROUP_NAME = "default" // Default configuration group name.
-	DEFAULT_REDIS_PORT = 6379      // Default redis port configuration if not passed.
+	DefaultGroupName = "default" // Default configuration group name.
 )
 
 var (
 	// Configuration groups.
-	configs = gmap.NewStrAnyMap(true)
+	localConfigMap = gmap.NewStrAnyMap(true)
 )
 
 // SetConfig sets the global configuration for specified group.
-// If <name> is not passed, it sets configuration for the default group name.
-func SetConfig(config Config, name ...string) {
-	group := DEFAULT_GROUP_NAME
+// If `name` is not passed, it sets configuration for the default group name.
+func SetConfig(config *Config, name ...string) {
+	group := DefaultGroupName
 	if len(name) > 0 {
 		group = name[0]
 	}
-	configs.Set(group, config)
-	instances.Remove(group)
+	localConfigMap.Set(group, config)
 
-	intlog.Printf(`SetConfig for group "%s": %+v`, group, config)
+	intlog.Printf(context.TODO(), `SetConfig for group "%s": %+v`, group, config)
 }
 
-// SetConfigByStr sets the global configuration for specified group with string.
-// If <name> is not passed, it sets configuration for the default group name.
-func SetConfigByStr(str string, name ...string) error {
-	group := DEFAULT_GROUP_NAME
+// SetConfigByMap sets the global configuration for specified group with map.
+// If `name` is not passed, it sets configuration for the default group name.
+func SetConfigByMap(m map[string]interface{}, name ...string) error {
+	group := DefaultGroupName
 	if len(name) > 0 {
 		group = name[0]
 	}
-	config, err := ConfigFromStr(str)
+	config, err := ConfigFromMap(m)
 	if err != nil {
 		return err
 	}
-	configs.Set(group, config)
-	instances.Remove(group)
+	localConfigMap.Set(group, config)
 	return nil
 }
 
-// GetConfig returns the global configuration with specified group name.
-// If <name> is not passed, it returns configuration of the default group name.
-func GetConfig(name ...string) (config Config, ok bool) {
-	group := DEFAULT_GROUP_NAME
-	if len(name) > 0 {
-		group = name[0]
+// ConfigFromMap parses and returns config from given map.
+func ConfigFromMap(m map[string]interface{}) (config *Config, err error) {
+	config = &Config{}
+	if err = gconv.Scan(m, config); err != nil {
+		err = gerror.NewCodef(gcode.CodeInvalidConfiguration, `invalid redis configuration: %#v`, m)
 	}
-	if v := configs.Get(group); v != nil {
-		return v.(Config), true
+	if config.DialTimeout < time.Second {
+		config.DialTimeout = config.DialTimeout * time.Second
 	}
-	return Config{}, false
-}
-
-// RemoveConfig removes the global configuration with specified group.
-// If <name> is not passed, it removes configuration of the default group name.
-func RemoveConfig(name ...string) {
-	group := DEFAULT_GROUP_NAME
-	if len(name) > 0 {
-		group = name[0]
+	if config.WaitTimeout < time.Second {
+		config.WaitTimeout = config.WaitTimeout * time.Second
 	}
-	configs.Remove(group)
-	instances.Remove(group)
-
-	intlog.Printf(`RemoveConfig: %s`, group)
-}
-
-// ConfigFromStr parses and returns config from given str.
-// Eg: host:port[,db,pass?maxIdle=x&maxActive=x&idleTimeout=x&maxConnLifetime=x]
-func ConfigFromStr(str string) (config Config, err error) {
-	array, _ := gregex.MatchString(`([^:]+):*(\d*),{0,1}(\d*),{0,1}(.*)\?(.+)`, str)
-	if len(array) == 6 {
-		parse, _ := gstr.Parse(array[5])
-		config = Config{
-			Host: array[1],
-			Port: gconv.Int(array[2]),
-			Db:   gconv.Int(array[3]),
-			Pass: array[4],
-		}
-		if config.Port == 0 {
-			config.Port = DEFAULT_REDIS_PORT
-		}
-		if v, ok := parse["maxIdle"]; ok {
-			config.MaxIdle = gconv.Int(v)
-		}
-		if v, ok := parse["maxActive"]; ok {
-			config.MaxActive = gconv.Int(v)
-		}
-		if v, ok := parse["idleTimeout"]; ok {
-			config.IdleTimeout = gconv.Duration(v) * time.Second
-		}
-		if v, ok := parse["maxConnLifetime"]; ok {
-			config.MaxConnLifetime = gconv.Duration(v) * time.Second
-		}
-		if v, ok := parse["tls"]; ok {
-			config.TLS = gconv.Bool(v)
-		}
-		if v, ok := parse["skipVerify"]; ok {
-			config.TLSSkipVerify = gconv.Bool(v)
-		}
-		return
+	if config.WriteTimeout < time.Second {
+		config.WriteTimeout = config.WriteTimeout * time.Second
 	}
-	array, _ = gregex.MatchString(`([^:]+):*(\d*),{0,1}(\d*),{0,1}(.*)`, str)
-	if len(array) == 5 {
-		config = Config{
-			Host: array[1],
-			Port: gconv.Int(array[2]),
-			Db:   gconv.Int(array[3]),
-			Pass: array[4],
-		}
-		if config.Port == 0 {
-			config.Port = DEFAULT_REDIS_PORT
-		}
-	} else {
-		err = gerror.Newf(`invalid redis configuration: "%s"`, str)
+	if config.ReadTimeout < time.Second {
+		config.ReadTimeout = config.ReadTimeout * time.Second
+	}
+	if config.IdleTimeout < time.Second {
+		config.IdleTimeout = config.IdleTimeout * time.Second
+	}
+	if config.MaxConnLifetime < time.Second {
+		config.MaxConnLifetime = config.MaxConnLifetime * time.Second
+	}
+	if config.Protocol != 2 && config.Protocol != 3 {
+		config.Protocol = 3
 	}
 	return
 }
 
-// ClearConfig removes all configurations and instances of redis.
+// GetConfig returns the global configuration with specified group name.
+// If `name` is not passed, it returns configuration of the default group name.
+func GetConfig(name ...string) (config *Config, ok bool) {
+	group := DefaultGroupName
+	if len(name) > 0 {
+		group = name[0]
+	}
+	if v := localConfigMap.Get(group); v != nil {
+		return v.(*Config), true
+	}
+	return &Config{}, false
+}
+
+// RemoveConfig removes the global configuration with specified group.
+// If `name` is not passed, it removes configuration of the default group name.
+func RemoveConfig(name ...string) {
+	group := DefaultGroupName
+	if len(name) > 0 {
+		group = name[0]
+	}
+	localConfigMap.Remove(group)
+
+	intlog.Printf(context.TODO(), `RemoveConfig: %s`, group)
+}
+
+// ClearConfig removes all configurations of redis.
 func ClearConfig() {
-	configs.Clear()
-	instances.Clear()
+	localConfigMap.Clear()
 }

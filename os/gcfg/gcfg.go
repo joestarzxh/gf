@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -8,383 +8,193 @@
 package gcfg
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"github.com/gogf/gf/text/gstr"
+	"context"
 
-	"github.com/gogf/gf/os/gres"
-
-	"github.com/gogf/gf/container/garray"
-	"github.com/gogf/gf/container/gmap"
-	"github.com/gogf/gf/encoding/gjson"
-	"github.com/gogf/gf/internal/cmdenv"
-	"github.com/gogf/gf/os/gfile"
-	"github.com/gogf/gf/os/gfsnotify"
-	"github.com/gogf/gf/os/glog"
-	"github.com/gogf/gf/os/gspath"
+	"github.com/gogf/gf/v2/container/gvar"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/internal/command"
+	"github.com/gogf/gf/v2/internal/intlog"
+	"github.com/gogf/gf/v2/internal/utils"
+	"github.com/gogf/gf/v2/os/genv"
 )
+
+// Config is the configuration management object.
+type Config struct {
+	adapter Adapter
+}
 
 const (
-	DEFAULT_CONFIG_FILE = "config.toml" // The default configuration file name.
-	gCMDENV_KEY         = "gf.gcfg"     // Configuration key for command argument or environment.
+	DefaultInstanceName   = "config" // DefaultName is the default instance name for instance usage.
+	DefaultConfigFileName = "config" // DefaultConfigFile is the default configuration file name.
 )
 
-// Configuration struct.
-type Config struct {
-	name  string           // Default configuration file name.
-	paths *garray.StrArray // Searching path array.
-	jsons *gmap.StrAnyMap  // The pared JSON objects for configuration files.
-	vc    bool             // Whether do violence check in value index searching. It affects the performance when set true(false in default).
+// New creates and returns a Config object with default adapter of AdapterFile.
+func New() (*Config, error) {
+	adapterFile, err := NewAdapterFile()
+	if err != nil {
+		return nil, err
+	}
+	return &Config{
+		adapter: adapterFile,
+	}, nil
 }
 
-var (
-	resourceTryFiles = []string{"", "/", "config/", "config", "/config", "/config/"}
-)
-
-// New returns a new configuration management object.
-// The parameter <file> specifies the default configuration file name for reading.
-func New(file ...string) *Config {
-	name := DEFAULT_CONFIG_FILE
-	if len(file) > 0 {
-		name = file[0]
+// NewWithAdapter creates and returns a Config object with given adapter.
+func NewWithAdapter(adapter Adapter) *Config {
+	return &Config{
+		adapter: adapter,
 	}
-	c := &Config{
-		name:  name,
-		paths: garray.NewStrArray(true),
-		jsons: gmap.NewStrAnyMap(true),
-	}
-	// Customized dir path from env/cmd.
-	if envPath := cmdenv.Get(fmt.Sprintf("%s.path", gCMDENV_KEY)).String(); envPath != "" {
-		if gfile.Exists(envPath) {
-			_ = c.SetPath(envPath)
-		} else {
-			if errorPrint() {
-				glog.Errorf("Configuration directory path does not exist: %s", envPath)
-			}
-		}
-	} else {
-		// Dir path of working dir.
-		_ = c.SetPath(gfile.Pwd())
-		// Dir path of binary.
-		if selfPath := gfile.SelfDir(); selfPath != "" && gfile.Exists(selfPath) {
-			_ = c.AddPath(selfPath)
-		}
-		// Dir path of main package.
-		if mainPath := gfile.MainPkgPath(); mainPath != "" && gfile.Exists(mainPath) {
-			_ = c.AddPath(mainPath)
-		}
-	}
-	return c
 }
 
-// filePath returns the absolute configuration file path for the given filename by <file>.
-func (c *Config) filePath(file ...string) (path string) {
-	name := c.name
-	if len(file) > 0 {
-		name = file[0]
+// Instance returns an instance of Config with default settings.
+// The parameter `name` is the name for the instance. But very note that, if the file "name.toml"
+// exists in the configuration directory, it then sets it as the default configuration file. The
+// toml file type is the default configuration file type.
+func Instance(name ...string) *Config {
+	var instanceName = DefaultInstanceName
+	if len(name) > 0 && name[0] != "" {
+		instanceName = name[0]
 	}
-	path = c.FilePath(name)
-	if path == "" {
-		buffer := bytes.NewBuffer(nil)
-		if c.paths.Len() > 0 {
-			buffer.WriteString(fmt.Sprintf("[gcfg] cannot find config file \"%s\" in following paths:", name))
-			c.paths.RLockFunc(func(array []string) {
-				index := 1
-				for _, v := range array {
-					v = gstr.TrimRight(v, `\/`)
-					buffer.WriteString(fmt.Sprintf("\n%d. %s", index, v))
-					index++
-					buffer.WriteString(fmt.Sprintf("\n%d. %s", index, v+gfile.Separator+"config"))
-					index++
-				}
-			})
-		} else {
-			buffer.WriteString(fmt.Sprintf("[gcfg] cannot find config file \"%s\" with no path set/add", name))
+	return localInstances.GetOrSetFuncLock(instanceName, func() interface{} {
+		adapterFile, err := NewAdapterFile()
+		if err != nil {
+			intlog.Errorf(context.Background(), `%+v`, err)
+			return nil
 		}
-		if errorPrint() {
-			glog.Error(buffer.String())
+		if instanceName != DefaultInstanceName {
+			adapterFile.SetFileName(instanceName)
 		}
-	}
-	return path
+		return NewWithAdapter(adapterFile)
+	}).(*Config)
 }
 
-// SetPath sets the configuration directory path for file search.
-// The parameter <path> can be absolute or relative path,
-// but absolute path is strongly recommended.
-func (c *Config) SetPath(path string) error {
-	var (
-		isDir    = false
-		realPath = ""
-	)
-	if file := gres.Get(path); file != nil {
-		realPath = path
-		isDir = file.FileInfo().IsDir()
-	} else {
-		// Absolute path.
-		realPath = gfile.RealPath(path)
-		if realPath == "" {
-			// Relative path.
-			c.paths.RLockFunc(func(array []string) {
-				for _, v := range array {
-					if path, _ := gspath.Search(v, path); path != "" {
-						realPath = path
-						break
-					}
-				}
-			})
-		}
-		if realPath != "" {
-			isDir = gfile.IsDir(realPath)
-		}
-	}
-	// Path not exist.
-	if realPath == "" {
-		buffer := bytes.NewBuffer(nil)
-		if c.paths.Len() > 0 {
-			buffer.WriteString(fmt.Sprintf("[gcfg] SetPath failed: cannot find directory \"%s\" in following paths:", path))
-			c.paths.RLockFunc(func(array []string) {
-				for k, v := range array {
-					buffer.WriteString(fmt.Sprintf("\n%d. %s", k+1, v))
-				}
-			})
-		} else {
-			buffer.WriteString(fmt.Sprintf(`[gcfg] SetPath failed: path "%s" does not exist`, path))
-		}
-		err := errors.New(buffer.String())
-		if errorPrint() {
-			glog.Error(err)
-		}
-		return err
-	}
-	// Should be a directory.
-	if !isDir {
-		err := fmt.Errorf(`[gcfg] SetPath failed: path "%s" should be directory type`, path)
-		if errorPrint() {
-			glog.Error(err)
-		}
-		return err
-	}
-	// Repeated path check.
-	if c.paths.Search(realPath) != -1 {
-		return nil
-	}
-	c.jsons.Clear()
-	c.paths.Clear()
-	c.paths.Append(realPath)
-	return nil
+// SetAdapter sets the adapter of current Config object.
+func (c *Config) SetAdapter(adapter Adapter) {
+	c.adapter = adapter
 }
 
-// SetViolenceCheck sets whether to perform hierarchical conflict checking.
-// This feature needs to be enabled when there is a level symbol in the key name.
-// It is off in default.
+// GetAdapter returns the adapter of current Config object.
+func (c *Config) GetAdapter() Adapter {
+	return c.adapter
+}
+
+// Available checks and returns the configuration service is available.
+// The optional parameter `pattern` specifies certain configuration resource.
 //
-// Note that, turning on this feature is quite expensive, and it is not recommended
-// to allow separators in the key names. It is best to avoid this on the application side.
-func (c *Config) SetViolenceCheck(check bool) {
-	c.vc = check
-	c.Clear()
+// It returns true if configuration file is present in default AdapterFile, or else false.
+// Note that this function does not return error as it just does simply check for backend configuration service.
+func (c *Config) Available(ctx context.Context, resource ...string) (ok bool) {
+	return c.adapter.Available(ctx, resource...)
 }
 
-// AddPath adds a absolute or relative path to the search paths.
-func (c *Config) AddPath(path string) error {
+// Get retrieves and returns value by specified `pattern`.
+// It returns all values of current Json object if `pattern` is given empty or string ".".
+// It returns nil if no value found by `pattern`.
+//
+// It returns a default value specified by `def` if value for `pattern` is not found.
+func (c *Config) Get(ctx context.Context, pattern string, def ...interface{}) (*gvar.Var, error) {
 	var (
-		isDir    = false
-		realPath = ""
+		err   error
+		value interface{}
 	)
-	// It firstly checks the resource manager,
-	// and then checks the filesystem for the path.
-	if file := gres.Get(path); file != nil {
-		realPath = path
-		isDir = file.FileInfo().IsDir()
-	} else {
-		// Absolute path.
-		realPath = gfile.RealPath(path)
-		if realPath == "" {
-			// Relative path.
-			c.paths.RLockFunc(func(array []string) {
-				for _, v := range array {
-					if path, _ := gspath.Search(v, path); path != "" {
-						realPath = path
-						break
-					}
-				}
-			})
-		}
-		if realPath != "" {
-			isDir = gfile.IsDir(realPath)
-		}
+	value, err = c.adapter.Get(ctx, pattern)
+	if err != nil {
+		return nil, err
 	}
-	if realPath == "" {
-		buffer := bytes.NewBuffer(nil)
-		if c.paths.Len() > 0 {
-			buffer.WriteString(fmt.Sprintf("[gcfg] AddPath failed: cannot find directory \"%s\" in following paths:", path))
-			c.paths.RLockFunc(func(array []string) {
-				for k, v := range array {
-					buffer.WriteString(fmt.Sprintf("\n%d. %s", k+1, v))
-				}
-			})
-		} else {
-			buffer.WriteString(fmt.Sprintf(`[gcfg] AddPath failed: path "%s" does not exist`, path))
+	if value == nil {
+		if len(def) > 0 {
+			return gvar.New(def[0]), nil
 		}
-		err := errors.New(buffer.String())
-		if errorPrint() {
-			glog.Error(err)
-		}
-		return err
+		return nil, nil
 	}
-	if !isDir {
-		err := fmt.Errorf(`[gcfg] AddPath failed: path "%s" should be directory type`, path)
-		if errorPrint() {
-			glog.Error(err)
-		}
-		return err
+	return gvar.New(value), nil
+}
+
+// GetWithEnv returns the configuration value specified by pattern `pattern`.
+// If the configuration value does not exist, then it retrieves and returns the environment value specified by `key`.
+// It returns the default value `def` if none of them exists.
+//
+// Fetching Rules: Environment arguments are in uppercase format, eg: GF_PACKAGE_VARIABLE.
+func (c *Config) GetWithEnv(ctx context.Context, pattern string, def ...interface{}) (*gvar.Var, error) {
+	value, err := c.Get(ctx, pattern)
+	if err != nil && gerror.Code(err) != gcode.CodeNotFound {
+		return nil, err
 	}
-	// Repeated path check.
-	if c.paths.Search(realPath) != -1 {
+	if value == nil {
+		if v := genv.Get(utils.FormatEnvKey(pattern)); v != nil {
+			return v, nil
+		}
+		if len(def) > 0 {
+			return gvar.New(def[0]), nil
+		}
+		return nil, nil
+	}
+	return value, nil
+}
+
+// GetWithCmd returns the configuration value specified by pattern `pattern`.
+// If the configuration value does not exist, then it retrieves and returns the command line option specified by `key`.
+// It returns the default value `def` if none of them exists.
+//
+// Fetching Rules: Command line arguments are in lowercase format, eg: gf.package.variable.
+func (c *Config) GetWithCmd(ctx context.Context, pattern string, def ...interface{}) (*gvar.Var, error) {
+	value, err := c.Get(ctx, pattern)
+	if err != nil && gerror.Code(err) != gcode.CodeNotFound {
+		return nil, err
+	}
+	if value == nil {
+		if v := command.GetOpt(utils.FormatCmdKey(pattern)); v != "" {
+			return gvar.New(v), nil
+		}
+		if len(def) > 0 {
+			return gvar.New(def[0]), nil
+		}
+		return nil, nil
+	}
+	return value, nil
+}
+
+// Data retrieves and returns all configuration data as map type.
+func (c *Config) Data(ctx context.Context) (data map[string]interface{}, err error) {
+	return c.adapter.Data(ctx)
+}
+
+// MustGet acts as function Get, but it panics if error occurs.
+func (c *Config) MustGet(ctx context.Context, pattern string, def ...interface{}) *gvar.Var {
+	v, err := c.Get(ctx, pattern, def...)
+	if err != nil {
+		panic(err)
+	}
+	if v == nil {
 		return nil
 	}
-	c.paths.Append(realPath)
-	//glog.Debug("[gcfg] AddPath:", realPath)
-	return nil
+	return v
 }
 
-// GetFilePath returns the absolute path of the specified configuration file.
-// If <file> is not passed, it returns the configuration file path of the default name.
-// If the specified configuration file does not exist,
-// an empty string is returned.
-func (c *Config) FilePath(file ...string) (path string) {
-	name := c.name
-	if len(file) > 0 {
-		name = file[0]
+// MustGetWithEnv acts as function GetWithEnv, but it panics if error occurs.
+func (c *Config) MustGetWithEnv(ctx context.Context, pattern string, def ...interface{}) *gvar.Var {
+	v, err := c.GetWithEnv(ctx, pattern, def...)
+	if err != nil {
+		panic(err)
 	}
-	// Searching resource manager.
-	if !gres.IsEmpty() {
-		for _, v := range resourceTryFiles {
-			if file := gres.Get(v + name); file != nil {
-				path = file.Name()
-				return
-			}
-		}
-		c.paths.RLockFunc(func(array []string) {
-			for _, prefix := range array {
-				for _, v := range resourceTryFiles {
-					if file := gres.Get(prefix + v + name); file != nil {
-						path = file.Name()
-						return
-					}
-				}
-			}
-		})
-	}
-	// Searching the file system.
-	c.paths.RLockFunc(func(array []string) {
-		for _, prefix := range array {
-			prefix = gstr.TrimRight(prefix, `\/`)
-			if path, _ = gspath.Search(prefix, name); path != "" {
-				return
-			}
-			if path, _ = gspath.Search(prefix+gfile.Separator+"config", name); path != "" {
-				return
-			}
-		}
-	})
-	return
+	return v
 }
 
-// SetFileName sets the default configuration file name.
-func (c *Config) SetFileName(name string) *Config {
-	c.name = name
-	return c
+// MustGetWithCmd acts as function GetWithCmd, but it panics if error occurs.
+func (c *Config) MustGetWithCmd(ctx context.Context, pattern string, def ...interface{}) *gvar.Var {
+	v, err := c.GetWithCmd(ctx, pattern, def...)
+	if err != nil {
+		panic(err)
+	}
+	return v
 }
 
-// GetFileName returns the default configuration file name.
-func (c *Config) GetFileName() string {
-	return c.name
-}
-
-// Available checks and returns whether configuration of given <file> is available.
-func (c *Config) Available(file ...string) bool {
-	var name string
-	if len(file) > 0 && file[0] != "" {
-		name = file[0]
-	} else {
-		name = c.name
+// MustData acts as function Data, but it panics if error occurs.
+func (c *Config) MustData(ctx context.Context) map[string]interface{} {
+	v, err := c.Data(ctx)
+	if err != nil {
+		panic(err)
 	}
-	if c.FilePath(name) != "" {
-		return true
-	}
-	if GetContent(name) != "" {
-		return true
-	}
-	return false
-}
-
-// getJson returns a *gjson.Json object for the specified <file> content.
-// It would print error if file reading fails. It return nil if any error occurs.
-func (c *Config) getJson(file ...string) *gjson.Json {
-	var name string
-	if len(file) > 0 && file[0] != "" {
-		name = file[0]
-	} else {
-		name = c.name
-	}
-	r := c.jsons.GetOrSetFuncLock(name, func() interface{} {
-		var (
-			content  = ""
-			filePath = ""
-		)
-		// The configured content can be any kind of data type different from its file type.
-		isFromConfigContent := true
-		if content = GetContent(name); content == "" {
-			isFromConfigContent = false
-			filePath = c.filePath(name)
-			if filePath == "" {
-				return nil
-			}
-			if file := gres.Get(filePath); file != nil {
-				content = string(file.Content())
-			} else {
-				content = gfile.GetContents(filePath)
-			}
-		}
-		// Note that the underlying configuration json object operations are concurrent safe.
-		var (
-			j   *gjson.Json
-			err error
-		)
-		dataType := gfile.ExtName(name)
-		if gjson.IsValidDataType(dataType) && !isFromConfigContent {
-			j, err = gjson.LoadContentType(dataType, content, true)
-		} else {
-			j, err = gjson.LoadContent(content, true)
-		}
-		if err == nil {
-			j.SetViolenceCheck(c.vc)
-			// Add monitor for this configuration file,
-			// any changes of this file will refresh its cache in Config object.
-			if filePath != "" && !gres.Contains(filePath) {
-				_, err = gfsnotify.Add(filePath, func(event *gfsnotify.Event) {
-					c.jsons.Remove(name)
-				})
-				if err != nil && errorPrint() {
-					glog.Error(err)
-				}
-			}
-			return j
-		} else {
-			if errorPrint() {
-				if filePath != "" {
-					glog.Criticalf(`[gcfg] Load config file "%s" failed: %s`, filePath, err.Error())
-				} else {
-					glog.Criticalf(`[gcfg] Load configuration failed: %s`, err.Error())
-				}
-			}
-		}
-		return nil
-	})
-	if r != nil {
-		return r.(*gjson.Json)
-	}
-	return nil
+	return v
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,18 +7,22 @@
 package gconv_test
 
 import (
+	"math"
 	"testing"
 	"time"
 
-	"github.com/gogf/gf/frame/g"
-	"github.com/gogf/gf/os/gtime"
-	"github.com/gogf/gf/test/gtest"
-	"github.com/gogf/gf/util/gconv"
+	"github.com/gogf/gf/v2/container/gvar"
+
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gtime"
+	"github.com/gogf/gf/v2/test/gtest"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
-type apiString interface {
+type iString interface {
 	String() string
 }
+
 type S struct {
 }
 
@@ -26,9 +30,10 @@ func (s S) String() string {
 	return "22222"
 }
 
-type apiError interface {
+type iError interface {
 	Error() string
 }
+
 type S1 struct {
 }
 
@@ -38,8 +43,8 @@ func (s1 S1) Error() string {
 
 func Test_Bool_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.AssertEQ(gconv.Bool(i), false)
+		var any interface{} = nil
+		t.AssertEQ(gconv.Bool(any), false)
 		t.AssertEQ(gconv.Bool(false), false)
 		t.AssertEQ(gconv.Bool(nil), false)
 		t.AssertEQ(gconv.Bool(0), false)
@@ -72,8 +77,8 @@ func Test_Bool_All(t *testing.T) {
 
 func Test_Int_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.AssertEQ(gconv.Int(i), 0)
+		var any interface{} = nil
+		t.AssertEQ(gconv.Int(any), 0)
 		t.AssertEQ(gconv.Int(false), 0)
 		t.AssertEQ(gconv.Int(nil), 0)
 		t.Assert(gconv.Int(nil), 0)
@@ -102,13 +107,14 @@ func Test_Int_All(t *testing.T) {
 		t.AssertEQ(gconv.Int(123.456), 123)
 		t.AssertEQ(gconv.Int(boolStruct{}), 0)
 		t.AssertEQ(gconv.Int(&boolStruct{}), 0)
+		t.AssertEQ(gconv.Int("NaN"), 0)
 	})
 }
 
 func Test_Int8_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Int8(i), int8(0))
+		var any interface{} = nil
+		t.Assert(gconv.Int8(any), int8(0))
 		t.AssertEQ(gconv.Int8(false), int8(0))
 		t.AssertEQ(gconv.Int8(nil), int8(0))
 		t.AssertEQ(gconv.Int8(0), int8(0))
@@ -136,13 +142,15 @@ func Test_Int8_All(t *testing.T) {
 		t.AssertEQ(gconv.Int8(123.456), int8(123))
 		t.AssertEQ(gconv.Int8(boolStruct{}), int8(0))
 		t.AssertEQ(gconv.Int8(&boolStruct{}), int8(0))
+		t.AssertEQ(gconv.Int8("NaN"), int8(0))
+
 	})
 }
 
 func Test_Int16_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Int16(i), int16(0))
+		var any interface{} = nil
+		t.Assert(gconv.Int16(any), int16(0))
 		t.AssertEQ(gconv.Int16(false), int16(0))
 		t.AssertEQ(gconv.Int16(nil), int16(0))
 		t.AssertEQ(gconv.Int16(0), int16(0))
@@ -170,13 +178,14 @@ func Test_Int16_All(t *testing.T) {
 		t.AssertEQ(gconv.Int16(123.456), int16(123))
 		t.AssertEQ(gconv.Int16(boolStruct{}), int16(0))
 		t.AssertEQ(gconv.Int16(&boolStruct{}), int16(0))
+		t.AssertEQ(gconv.Int16("NaN"), int16(0))
 	})
 }
 
 func Test_Int32_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Int32(i), int32(0))
+		var any interface{} = nil
+		t.Assert(gconv.Int32(any), int32(0))
 		t.AssertEQ(gconv.Int32(false), int32(0))
 		t.AssertEQ(gconv.Int32(nil), int32(0))
 		t.AssertEQ(gconv.Int32(0), int32(0))
@@ -204,16 +213,17 @@ func Test_Int32_All(t *testing.T) {
 		t.AssertEQ(gconv.Int32(123.456), int32(123))
 		t.AssertEQ(gconv.Int32(boolStruct{}), int32(0))
 		t.AssertEQ(gconv.Int32(&boolStruct{}), int32(0))
+		t.AssertEQ(gconv.Int32("NaN"), int32(0))
 	})
 }
 
 func Test_Int64_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
+		var any interface{} = nil
 		t.AssertEQ(gconv.Int64("0x00e"), int64(14))
-		t.Assert(gconv.Int64("022"), int64(18))
+		t.Assert(gconv.Int64("022"), int64(22))
 
-		t.Assert(gconv.Int64(i), int64(0))
+		t.Assert(gconv.Int64(any), int64(0))
 		t.Assert(gconv.Int64(true), 1)
 		t.Assert(gconv.Int64("1"), int64(1))
 		t.Assert(gconv.Int64("0"), int64(0))
@@ -258,13 +268,14 @@ func Test_Int64_All(t *testing.T) {
 		t.AssertEQ(gconv.Int64(123.456), int64(123))
 		t.AssertEQ(gconv.Int64(boolStruct{}), int64(0))
 		t.AssertEQ(gconv.Int64(&boolStruct{}), int64(0))
+		t.AssertEQ(gconv.Int64("NaN"), int64(0))
 	})
 }
 
 func Test_Uint_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.AssertEQ(gconv.Uint(i), uint(0))
+		var any interface{} = nil
+		t.AssertEQ(gconv.Uint(any), uint(0))
 		t.AssertEQ(gconv.Uint(false), uint(0))
 		t.AssertEQ(gconv.Uint(nil), uint(0))
 		t.Assert(gconv.Uint(nil), uint(0))
@@ -293,13 +304,14 @@ func Test_Uint_All(t *testing.T) {
 		t.AssertEQ(gconv.Uint(123.456), uint(123))
 		t.AssertEQ(gconv.Uint(boolStruct{}), uint(0))
 		t.AssertEQ(gconv.Uint(&boolStruct{}), uint(0))
+		t.AssertEQ(gconv.Uint("NaN"), uint(0))
 	})
 }
 
 func Test_Uint8_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Uint8(i), uint8(0))
+		var any interface{} = nil
+		t.Assert(gconv.Uint8(any), uint8(0))
 		t.AssertEQ(gconv.Uint8(uint8(1)), uint8(1))
 		t.AssertEQ(gconv.Uint8(false), uint8(0))
 		t.AssertEQ(gconv.Uint8(nil), uint8(0))
@@ -328,13 +340,14 @@ func Test_Uint8_All(t *testing.T) {
 		t.AssertEQ(gconv.Uint8(123.456), uint8(123))
 		t.AssertEQ(gconv.Uint8(boolStruct{}), uint8(0))
 		t.AssertEQ(gconv.Uint8(&boolStruct{}), uint8(0))
+		t.AssertEQ(gconv.Uint8("NaN"), uint8(0))
 	})
 }
 
 func Test_Uint16_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Uint16(i), uint16(0))
+		var any interface{} = nil
+		t.Assert(gconv.Uint16(any), uint16(0))
 		t.AssertEQ(gconv.Uint16(uint16(1)), uint16(1))
 		t.AssertEQ(gconv.Uint16(false), uint16(0))
 		t.AssertEQ(gconv.Uint16(nil), uint16(0))
@@ -363,13 +376,14 @@ func Test_Uint16_All(t *testing.T) {
 		t.AssertEQ(gconv.Uint16(123.456), uint16(123))
 		t.AssertEQ(gconv.Uint16(boolStruct{}), uint16(0))
 		t.AssertEQ(gconv.Uint16(&boolStruct{}), uint16(0))
+		t.AssertEQ(gconv.Uint16("NaN"), uint16(0))
 	})
 }
 
 func Test_Uint32_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Uint32(i), uint32(0))
+		var any interface{} = nil
+		t.Assert(gconv.Uint32(any), uint32(0))
 		t.AssertEQ(gconv.Uint32(uint32(1)), uint32(1))
 		t.AssertEQ(gconv.Uint32(false), uint32(0))
 		t.AssertEQ(gconv.Uint32(nil), uint32(0))
@@ -398,16 +412,17 @@ func Test_Uint32_All(t *testing.T) {
 		t.AssertEQ(gconv.Uint32(123.456), uint32(123))
 		t.AssertEQ(gconv.Uint32(boolStruct{}), uint32(0))
 		t.AssertEQ(gconv.Uint32(&boolStruct{}), uint32(0))
+		t.AssertEQ(gconv.Uint32("NaN"), uint32(0))
 	})
 }
 
 func Test_Uint64_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
+		var any interface{} = nil
 		t.AssertEQ(gconv.Uint64("0x00e"), uint64(14))
-		t.Assert(gconv.Uint64("022"), uint64(18))
+		t.Assert(gconv.Uint64("022"), uint64(22))
 
-		t.AssertEQ(gconv.Uint64(i), uint64(0))
+		t.AssertEQ(gconv.Uint64(any), uint64(0))
 		t.AssertEQ(gconv.Uint64(true), uint64(1))
 		t.Assert(gconv.Uint64("1"), int64(1))
 		t.Assert(gconv.Uint64("0"), uint64(0))
@@ -452,13 +467,14 @@ func Test_Uint64_All(t *testing.T) {
 		t.AssertEQ(gconv.Uint64(123.456), uint64(123))
 		t.AssertEQ(gconv.Uint64(boolStruct{}), uint64(0))
 		t.AssertEQ(gconv.Uint64(&boolStruct{}), uint64(0))
+		t.AssertEQ(gconv.Uint64("NaN"), uint64(0))
 	})
 }
 
 func Test_Float32_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Float32(i), float32(0))
+		var any interface{} = nil
+		t.Assert(gconv.Float32(any), float32(0))
 		t.AssertEQ(gconv.Float32(false), float32(0))
 		t.AssertEQ(gconv.Float32(nil), float32(0))
 		t.AssertEQ(gconv.Float32(0), float32(0))
@@ -471,6 +487,7 @@ func Test_Float32_All(t *testing.T) {
 		t.AssertEQ(gconv.Float32([2]int{1, 2}), float32(0))
 		t.AssertEQ(gconv.Float32([]interface{}{}), float32(0))
 		t.AssertEQ(gconv.Float32([]map[int]int{}), float32(0))
+		t.AssertEQ(gconv.Float32(gvar.New(float32(0))), float32(0))
 
 		var countryCapitalMap = make(map[string]string)
 		/* map插入key - value对,各个国家对应的首都 */
@@ -486,13 +503,14 @@ func Test_Float32_All(t *testing.T) {
 		t.AssertEQ(gconv.Float32(123.456), float32(123.456))
 		t.AssertEQ(gconv.Float32(boolStruct{}), float32(0))
 		t.AssertEQ(gconv.Float32(&boolStruct{}), float32(0))
+		t.AssertEQ(gconv.Float32("NaN"), float32(math.NaN()))
 	})
 }
 
 func Test_Float64_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.Assert(gconv.Float64(i), float64(0))
+		var any interface{} = nil
+		t.Assert(gconv.Float64(any), float64(0))
 		t.AssertEQ(gconv.Float64(false), float64(0))
 		t.AssertEQ(gconv.Float64(nil), float64(0))
 		t.AssertEQ(gconv.Float64(0), float64(0))
@@ -505,6 +523,7 @@ func Test_Float64_All(t *testing.T) {
 		t.AssertEQ(gconv.Float64([2]int{1, 2}), float64(0))
 		t.AssertEQ(gconv.Float64([]interface{}{}), float64(0))
 		t.AssertEQ(gconv.Float64([]map[int]int{}), float64(0))
+		t.AssertEQ(gconv.Float64(gvar.New(float64(0))), float64(0))
 
 		var countryCapitalMap = make(map[string]string)
 		/* map插入key - value对,各个国家对应的首都 */
@@ -520,6 +539,7 @@ func Test_Float64_All(t *testing.T) {
 		t.AssertEQ(gconv.Float64(123.456), float64(123.456))
 		t.AssertEQ(gconv.Float64(boolStruct{}), float64(0))
 		t.AssertEQ(gconv.Float64(&boolStruct{}), float64(0))
+		t.AssertEQ(gconv.Float64("NaN"), float64(math.NaN()))
 	})
 }
 
@@ -527,8 +547,8 @@ func Test_String_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		var s []rune
 		t.AssertEQ(gconv.String(s), "")
-		var i interface{} = nil
-		t.AssertEQ(gconv.String(i), "")
+		var any interface{} = nil
+		t.AssertEQ(gconv.String(any), "")
 		t.AssertEQ(gconv.String("1"), "1")
 		t.AssertEQ(gconv.String("0"), string("0"))
 		t.Assert(gconv.String("X"), string("X"))
@@ -570,12 +590,10 @@ func Test_String_All(t *testing.T) {
 		t.AssertEQ(gconv.String(boolStruct{}), "{}")
 		t.AssertEQ(gconv.String(&boolStruct{}), "{}")
 
-		var info apiString
-		info = new(S)
+		var info = new(S)
 		t.AssertEQ(gconv.String(info), "22222")
-		var errinfo apiError
-		errinfo = new(S1)
-		t.AssertEQ(gconv.String(errinfo), "22222")
+		var errInfo = new(S1)
+		t.AssertEQ(gconv.String(errInfo), "22222")
 	})
 }
 
@@ -602,6 +620,7 @@ func Test_Bytes_All(t *testing.T) {
 		t.AssertEQ(gconv.Bytes(int32(0)), []uint8{0, 0, 0, 0})
 		t.AssertEQ(gconv.Bytes("s"), []uint8{115})
 		t.AssertEQ(gconv.Bytes([]byte("s")), []uint8{115})
+		t.AssertEQ(gconv.Bytes(gvar.New([]byte("s"))), []uint8{115})
 	})
 }
 
@@ -615,8 +634,8 @@ func Test_Byte_All(t *testing.T) {
 
 func Test_Convert_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		var i interface{} = nil
-		t.AssertEQ(gconv.Convert(i, "string"), "")
+		var any interface{} = nil
+		t.AssertEQ(gconv.Convert(any, "string"), "")
 		t.AssertEQ(gconv.Convert("1", "string"), "1")
 		t.Assert(gconv.Convert(int64(1), "int64"), int64(1))
 		t.Assert(gconv.Convert(int(0), "int"), int(0))
@@ -633,7 +652,8 @@ func Test_Convert_All(t *testing.T) {
 		t.AssertEQ(gconv.Convert(true, "bool"), true)
 		t.AssertEQ(gconv.Convert([]byte{}, "[]byte"), []uint8{})
 		t.AssertEQ(gconv.Convert([]string{}, "[]string"), []string{})
-		t.AssertEQ(gconv.Convert([2]int{1, 2}, "[]int"), []int{0})
+		t.AssertEQ(gconv.Convert([2]int{1, 2}, "[]int"), []int{1, 2})
+		t.AssertEQ(gconv.Convert([2]uint8{1, 2}, "[]uint8"), []uint8{1, 2})
 		t.AssertEQ(gconv.Convert("1989-01-02", "Time", "Y-m-d"), gconv.Time("1989-01-02", "Y-m-d"))
 		t.AssertEQ(gconv.Convert(1989, "Time"), gconv.Time("1970-01-01 08:33:09 +0800 CST"))
 		t.AssertEQ(gconv.Convert(gtime.Now(), "gtime.Time", 1), *gtime.New())
@@ -644,13 +664,63 @@ func Test_Convert_All(t *testing.T) {
 		t.AssertEQ(gconv.Convert(1989, "Duration"), time.Duration(int64(1989)))
 		t.AssertEQ(gconv.Convert("1989", "Duration"), time.Duration(int64(1989)))
 		t.AssertEQ(gconv.Convert("1989", ""), "1989")
-	})
-}
 
-func Test_Time_All(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		t.AssertEQ(gconv.Duration(""), time.Duration(int64(0)))
-		t.AssertEQ(gconv.GTime(""), gtime.New())
+		var intNum int = 1
+		t.Assert(gconv.Convert(&intNum, "*int"), int(1))
+		var int8Num int8 = 1
+		t.Assert(gconv.Convert(int8Num, "*int8"), int(1))
+		t.Assert(gconv.Convert(&int8Num, "*int8"), int(1))
+		var int16Num int16 = 1
+		t.Assert(gconv.Convert(int16Num, "*int16"), int(1))
+		t.Assert(gconv.Convert(&int16Num, "*int16"), int(1))
+		var int32Num int32 = 1
+		t.Assert(gconv.Convert(int32Num, "*int32"), int(1))
+		t.Assert(gconv.Convert(&int32Num, "*int32"), int(1))
+		var int64Num int64 = 1
+		t.Assert(gconv.Convert(int64Num, "*int64"), int(1))
+		t.Assert(gconv.Convert(&int64Num, "*int64"), int(1))
+
+		var uintNum uint = 1
+		t.Assert(gconv.Convert(&uintNum, "*uint"), int(1))
+		var uint8Num uint8 = 1
+		t.Assert(gconv.Convert(uint8Num, "*uint8"), int(1))
+		t.Assert(gconv.Convert(&uint8Num, "*uint8"), int(1))
+		var uint16Num uint16 = 1
+		t.Assert(gconv.Convert(uint16Num, "*uint16"), int(1))
+		t.Assert(gconv.Convert(&uint16Num, "*uint16"), int(1))
+		var uint32Num uint32 = 1
+		t.Assert(gconv.Convert(uint32Num, "*uint32"), int(1))
+		t.Assert(gconv.Convert(&uint32Num, "*uint32"), int(1))
+		var uint64Num uint64 = 1
+		t.Assert(gconv.Convert(uint64Num, "*uint64"), int(1))
+		t.Assert(gconv.Convert(&uint64Num, "*uint64"), int(1))
+
+		var float32Num float32 = 1.1
+		t.Assert(gconv.Convert(float32Num, "*float32"), float32(1.1))
+		t.Assert(gconv.Convert(&float32Num, "*float32"), float32(1.1))
+
+		var float64Num float64 = 1.1
+		t.Assert(gconv.Convert(float64Num, "*float64"), float64(1.1))
+		t.Assert(gconv.Convert(&float64Num, "*float64"), float64(1.1))
+
+		var boolValue bool = true
+		t.Assert(gconv.Convert(boolValue, "*bool"), true)
+		t.Assert(gconv.Convert(&boolValue, "*bool"), true)
+
+		var stringValue string = "1"
+		t.Assert(gconv.Convert(stringValue, "*string"), "1")
+		t.Assert(gconv.Convert(&stringValue, "*string"), "1")
+
+		var durationValue time.Duration = 1989
+		var expectDurationValue = time.Duration(int64(1989))
+		t.AssertEQ(gconv.Convert(&durationValue, "*time.Duration"), &expectDurationValue)
+		t.AssertEQ(gconv.Convert(durationValue, "*time.Duration"), &expectDurationValue)
+
+		var string_interface_map = map[string]interface{}{"k1": 1}
+		var string_int_map = map[string]int{"k1": 1}
+		var string_string_map = map[string]string{"k1": "1"}
+		t.AssertEQ(gconv.Convert(string_int_map, "map[string]string"), string_string_map)
+		t.AssertEQ(gconv.Convert(string_int_map, "map[string]interface{}"), string_interface_map)
 	})
 }
 
@@ -747,13 +817,17 @@ func Test_Slice_All(t *testing.T) {
 // 私有属性不会进行转换
 func Test_Slice_PrivateAttribute_All(t *testing.T) {
 	type User struct {
-		Id   int
-		name string
-		Ad   []interface{}
+		Id   int           `json:"id"`
+		name string        `json:"name"`
+		Ad   []interface{} `json:"ad"`
 	}
 	gtest.C(t, func(t *gtest.T) {
 		user := &User{1, "john", []interface{}{2}}
-		t.Assert(gconv.Interfaces(user), g.Slice{1, []interface{}{2}})
+		array := gconv.Interfaces(user)
+		t.Assert(len(array), 1)
+		t.Assert(array[0].(*User).Id, 1)
+		t.Assert(array[0].(*User).name, "john")
+		t.Assert(array[0].(*User).Ad, []interface{}{2})
 	})
 }
 
@@ -1272,13 +1346,13 @@ func Test_Struct_PrivateAttribute_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		user := new(User)
 		err := gconv.Struct(g.Map{"id": 1, "name": "john"}, user)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(user.Id, 1)
 		t.Assert(user.name, "")
 	})
 }
 
-func Test_Struct_Deep_All(t *testing.T) {
+func Test_Struct_Embedded_All(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		type Ids struct {
 			Id  int `json:"id"`
@@ -1303,7 +1377,7 @@ func Test_Struct_Deep_All(t *testing.T) {
 			"create_time": "2019",
 		}
 		user := new(User)
-		gconv.StructDeep(data, user)
+		gconv.Struct(data, user)
 		t.Assert(user.Id, 100)
 		t.Assert(user.Uid, 101)
 		t.Assert(user.Nickname, "T1")

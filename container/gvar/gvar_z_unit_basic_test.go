@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,12 +9,13 @@ package gvar_test
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/gogf/gf/util/gconv"
 	"testing"
 	"time"
 
-	"github.com/gogf/gf/container/gvar"
-	"github.com/gogf/gf/test/gtest"
+	"github.com/gogf/gf/v2/container/gvar"
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/test/gtest"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
 func Test_Set(t *testing.T) {
@@ -28,10 +29,7 @@ func Test_Set(t *testing.T) {
 		v.Set(123.456)
 		t.Assert(v.Val(), 123.456)
 	})
-	gtest.C(t, func(t *gtest.T) {
-		v := gvar.Create(123.456)
-		t.Assert(v.Val(), 123.456)
-	})
+
 	gtest.C(t, func(t *gtest.T) {
 		objOne := gvar.New("old", true)
 		objOneOld, _ := objOne.Set("new").(string)
@@ -52,8 +50,12 @@ func Test_Val(t *testing.T) {
 		objTwo := gvar.New(1, false)
 		objTwoOld, _ := objTwo.Val().(int)
 		t.Assert(objTwoOld, 1)
+
+		objOne = nil
+		t.Assert(objOne.Val(), nil)
 	})
 }
+
 func Test_Interface(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		objOne := gvar.New(1, true)
@@ -65,6 +67,7 @@ func Test_Interface(t *testing.T) {
 		t.Assert(objTwoOld, 1)
 	})
 }
+
 func Test_IsNil(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		objOne := gvar.New(nil, true)
@@ -101,6 +104,7 @@ func Test_String(t *testing.T) {
 
 	})
 }
+
 func Test_Bool(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		var ok bool = true
@@ -203,6 +207,7 @@ func Test_Uint64(t *testing.T) {
 
 	})
 }
+
 func Test_Float32(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		var num float32 = 1.1
@@ -218,62 +223,6 @@ func Test_Float64(t *testing.T) {
 		objOne := gvar.New(num, true)
 		t.Assert(objOne.Float64(), num)
 
-	})
-}
-
-func Test_Ints(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var arr = []int{1, 2, 3, 4, 5}
-		objOne := gvar.New(arr, true)
-		t.Assert(objOne.Ints()[0], arr[0])
-	})
-}
-func Test_Floats(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var arr = []float64{1, 2, 3, 4, 5}
-		objOne := gvar.New(arr, true)
-		t.Assert(objOne.Floats()[0], arr[0])
-	})
-}
-func Test_Strings(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var arr = []string{"hello", "world"}
-		objOne := gvar.New(arr, true)
-		t.Assert(objOne.Strings()[0], arr[0])
-	})
-}
-
-func Test_Interfaces(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var arr = []int{1, 2, 3, 4, 5}
-		objOne := gvar.New(arr, true)
-		t.Assert(objOne.Interfaces(), arr)
-	})
-}
-
-func Test_Slice(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var arr = []int{1, 2, 3, 4, 5}
-		objOne := gvar.New(arr, true)
-		t.Assert(objOne.Slice(), arr)
-	})
-}
-
-func Test_Array(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var arr = []int{1, 2, 3, 4, 5}
-		objOne := gvar.New(arr, false)
-		t.Assert(objOne.Array(), arr)
-	})
-}
-
-func Test_Vars(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var arr = []int{1, 2, 3, 4, 5}
-		objOne := gvar.New(arr, false)
-		t.Assert(len(objOne.Vars()), 5)
-		t.Assert(objOne.Vars()[0].Int(), 1)
-		t.Assert(objOne.Vars()[4].Int(), 5)
 	})
 }
 
@@ -301,19 +250,107 @@ func Test_Duration(t *testing.T) {
 	})
 }
 
-func Test_UnmarshalValue(t *testing.T) {
-	type V struct {
-		Name string
-		Var  *gvar.Var
-	}
+func Test_UnmarshalJson(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
+		type V struct {
+			Name string
+			Var  *gvar.Var
+		}
 		var v *V
 		err := gconv.Struct(map[string]interface{}{
 			"name": "john",
 			"var":  "v",
 		}, &v)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(v.Name, "john")
 		t.Assert(v.Var.String(), "v")
+	})
+	gtest.C(t, func(t *gtest.T) {
+		type V struct {
+			Name string
+			Var  gvar.Var
+		}
+		var v *V
+		err := gconv.Struct(map[string]interface{}{
+			"name": "john",
+			"var":  "v",
+		}, &v)
+		t.AssertNil(err)
+		t.Assert(v.Name, "john")
+		t.Assert(v.Var.String(), "v")
+	})
+}
+
+func Test_UnmarshalValue(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		type V struct {
+			Name string
+			Var  *gvar.Var
+		}
+		var v *V
+		err := gconv.Struct(map[string]interface{}{
+			"name": "john",
+			"var":  "v",
+		}, &v)
+		t.AssertNil(err)
+		t.Assert(v.Name, "john")
+		t.Assert(v.Var.String(), "v")
+	})
+	gtest.C(t, func(t *gtest.T) {
+		type V struct {
+			Name string
+			Var  gvar.Var
+		}
+		var v *V
+		err := gconv.Struct(map[string]interface{}{
+			"name": "john",
+			"var":  "v",
+		}, &v)
+		t.AssertNil(err)
+		t.Assert(v.Name, "john")
+		t.Assert(v.Var.String(), "v")
+	})
+}
+
+func Test_Copy(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		src := g.Map{
+			"k1": "v1",
+			"k2": "v2",
+		}
+		srcVar := gvar.New(src)
+		dstVar := srcVar.Copy()
+		t.Assert(srcVar.Map(), src)
+		t.Assert(dstVar.Map(), src)
+
+		dstVar.Map()["k3"] = "v3"
+		t.Assert(srcVar.Map(), g.Map{
+			"k1": "v1",
+			"k2": "v2",
+		})
+		t.Assert(dstVar.Map(), g.Map{
+			"k1": "v1",
+			"k2": "v2",
+			"k3": "v3",
+		})
+	})
+}
+
+func Test_DeepCopy(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		src := g.Map{
+			"k1": "v1",
+			"k2": "v2",
+		}
+		srcVar := gvar.New(src)
+		copyVar := srcVar.DeepCopy().(*gvar.Var)
+		copyVar.Set(g.Map{
+			"k3": "v3",
+			"k4": "v4",
+		})
+		t.AssertNE(srcVar, copyVar)
+
+		srcVar = nil
+		t.AssertNil(srcVar.DeepCopy())
 	})
 }

@@ -1,9 +1,8 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
 // You can obtain one at https://github.com/gogf/gf.
-// pprof封装.
 
 package ghttp
 
@@ -12,26 +11,41 @@ import (
 	runpprof "runtime/pprof"
 	"strings"
 
-	"github.com/gogf/gf/os/gview"
+	"github.com/gogf/gf/v2/internal/intlog"
+	"github.com/gogf/gf/v2/os/gview"
 )
 
 // utilPProf is the PProf interface implementer.
 type utilPProf struct{}
 
 const (
-	gDEFAULT_PPROF_PATTERN = "/debug/pprof"
+	defaultPProfServerName = "pprof-server"
+	defaultPProfPattern    = "/debug/pprof"
 )
+
+// StartPProfServer starts and runs a new server for pprof.
+func StartPProfServer(port int, pattern ...string) {
+	s := GetServer(defaultPProfServerName)
+	s.EnablePProf()
+	s.SetPort(port)
+	s.Run()
+}
 
 // EnablePProf enables PProf feature for server.
 func (s *Server) EnablePProf(pattern ...string) {
-	p := gDEFAULT_PPROF_PATTERN
+	s.Domain(DefaultDomainName).EnablePProf(pattern...)
+}
+
+// EnablePProf enables PProf feature for server of specified domain.
+func (d *Domain) EnablePProf(pattern ...string) {
+	p := defaultPProfPattern
 	if len(pattern) > 0 && pattern[0] != "" {
 		p = pattern[0]
 	}
 	up := &utilPProf{}
-	_, _, uri, _ := s.parsePattern(p)
+	_, _, uri, _ := d.server.parsePattern(p)
 	uri = strings.TrimRight(uri, "/")
-	s.Group(uri, func(group *RouterGroup) {
+	d.Group(uri, func(group *RouterGroup) {
 		group.ALL("/*action", up.Index)
 		group.ALL("/cmdline", up.Cmdline)
 		group.ALL("/profile", up.Profile)
@@ -42,23 +56,31 @@ func (s *Server) EnablePProf(pattern ...string) {
 
 // Index shows the PProf index page.
 func (p *utilPProf) Index(r *Request) {
-	profiles := runpprof.Profiles()
-	action := r.GetString("action")
-	data := map[string]interface{}{
-		"uri":      strings.TrimRight(r.URL.Path, "/") + "/",
-		"profiles": profiles,
-	}
+	var (
+		ctx      = r.Context()
+		profiles = runpprof.Profiles()
+		action   = r.Get("action").String()
+		data     = map[string]interface{}{
+			"uri":      strings.TrimRight(r.URL.Path, "/") + "/",
+			"profiles": profiles,
+		}
+	)
 	if len(action) == 0 {
-		buffer, _ := gview.ParseContent(`
+		buffer, _ := gview.ParseContent(r.Context(), `
             <html>
             <head>
-                <title>gf ghttp pprof</title>
+                <title>GoFrame PProf</title>
             </head>
             {{$uri := .uri}}
             <body>
                 profiles:<br>
                 <table>
-                    {{range .profiles}}<tr><td align=right>{{.Count}}<td><a href="{{$uri}}{{.Name}}?debug=1">{{.Name}}</a>{{end}}
+                    {{range .profiles}}
+						<tr>
+							<td align=right>{{.Count}}</td>
+							<td><a href="{{$uri}}{{.Name}}?debug=1">{{.Name}}</a></td>
+						<tr>
+					{{end}}
                 </table>
                 <br><a href="{{$uri}}goroutine?debug=2">full goroutine stack dump</a><br>
             </body>
@@ -69,7 +91,9 @@ func (p *utilPProf) Index(r *Request) {
 	}
 	for _, p := range profiles {
 		if p.Name() == action {
-			p.WriteTo(r.Response.Writer, r.GetRequestInt("debug"))
+			if err := p.WriteTo(r.Response.Writer, r.GetRequest("debug").Int()); err != nil {
+				intlog.Errorf(ctx, `%+v`, err)
+			}
 			break
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,11 +9,12 @@
 package grand_test
 
 import (
-	"crypto/rand"
+	cryptoRand "crypto/rand"
 	"encoding/binary"
+	mathRand "math/rand"
 	"testing"
 
-	"github.com/gogf/gf/util/grand"
+	"github.com/gogf/gf/v2/util/grand"
 )
 
 var (
@@ -23,15 +24,21 @@ var (
 	strForStr      = "我爱GoFrame"
 )
 
-func Benchmark_Rand_Buffer4(b *testing.B) {
+func Benchmark_Math_Rand_Int(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		rand.Read(randBuffer4)
+		mathRand.Int()
 	}
 }
 
-func Benchmark_Rand_Buffer1024(b *testing.B) {
+func Benchmark_CryptoRand_Buffer4(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		rand.Read(randBuffer1024)
+		cryptoRand.Read(randBuffer4)
+	}
+}
+
+func Benchmark_CryptoRand_Buffer1024(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		cryptoRand.Read(randBuffer1024)
 	}
 }
 
@@ -101,9 +108,9 @@ func Benchmark_Uint32Converting(b *testing.B) {
 	}
 }
 
-func Benchmark_Buffer(b *testing.B) {
+func Benchmark_CryptoRand_Buffer(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		if _, err := rand.Read(buffer); err == nil {
+		if _, err := cryptoRand.Read(buffer); err == nil {
 			binary.LittleEndian.Uint64(buffer)
 		}
 	}

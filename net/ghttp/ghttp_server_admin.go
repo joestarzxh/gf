@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,13 +7,15 @@
 package ghttp
 
 import (
-	"github.com/gogf/gf/os/gfile"
+	"context"
+	"os"
 	"strings"
 	"time"
 
-	"github.com/gogf/gf/os/gproc"
-	"github.com/gogf/gf/os/gtimer"
-	"github.com/gogf/gf/os/gview"
+	"github.com/gogf/gf/v2/os/gfile"
+	"github.com/gogf/gf/v2/os/gproc"
+	"github.com/gogf/gf/v2/os/gtimer"
+	"github.com/gogf/gf/v2/os/gview"
 )
 
 // utilAdmin is the controller for administration.
@@ -26,7 +28,7 @@ func (p *utilAdmin) Index(r *Request) {
 		"path": gfile.SelfPath(),
 		"uri":  strings.TrimRight(r.URL.Path, "/"),
 	}
-	buffer, _ := gview.ParseContent(`
+	buffer, _ := gview.ParseContent(r.Context(), `
             <html>
             <head>
                 <title>GoFrame Web Server Admin</title>
@@ -44,18 +46,16 @@ func (p *utilAdmin) Index(r *Request) {
 
 // Restart restarts all the servers in the process.
 func (p *utilAdmin) Restart(r *Request) {
-	var err error = nil
+	var (
+		ctx = r.Context()
+		err error
+	)
 	// Custom start binary path when this process exits.
-	path := r.GetQueryString("newExeFilePath")
+	path := r.GetQuery("newExeFilePath").String()
 	if path == "" {
-		path = gfile.SelfPath()
+		path = os.Args[0]
 	}
-	if len(path) > 0 {
-		err = RestartAllServer(path)
-	} else {
-		err = RestartAllServer()
-	}
-	if err == nil {
+	if err = RestartAllServer(ctx, path); err == nil {
 		r.Response.WriteExit("server restarted")
 	} else {
 		r.Response.WriteExit(err.Error())
@@ -64,18 +64,16 @@ func (p *utilAdmin) Restart(r *Request) {
 
 // Shutdown shuts down all the servers.
 func (p *utilAdmin) Shutdown(r *Request) {
-	if err := r.Server.Shutdown(); err != nil {
-		r.Response.WriteExit(err.Error())
-	}
-	if err := ShutdownAllServer(); err == nil {
-		r.Response.WriteExit("server shutdown")
-	} else {
-		r.Response.WriteExit(err.Error())
-	}
+	gtimer.SetTimeout(r.Context(), time.Second, func(ctx context.Context) {
+		// It shuts down the server after 1 second, which is not triggered by system signal,
+		// to ensure the response successfully to the client.
+		_ = r.Server.Shutdown()
+	})
+	r.Response.WriteExit("server shutdown")
 }
 
 // EnableAdmin enables the administration feature for the process.
-// The optional parameter <pattern> specifies the URI for the administration page.
+// The optional parameter `pattern` specifies the URI for the administration page.
 func (s *Server) EnableAdmin(pattern ...string) {
 	p := "/debug/admin"
 	if len(pattern) > 0 {
@@ -86,14 +84,12 @@ func (s *Server) EnableAdmin(pattern ...string) {
 
 // Shutdown shuts down current server.
 func (s *Server) Shutdown() error {
-	// It shuts down the server after 1 second, which is not triggered by system signal,
-	// to ensure the response successfully to the client.
-	gtimer.SetTimeout(time.Second, func() {
-		// Only shut down current server.
-		// It may have multiple underlying http servers.
-		for _, v := range s.servers {
-			v.close()
-		}
-	})
+	var ctx = context.TODO()
+	s.doServiceDeregister()
+	// Only shut down current servers.
+	// It may have multiple underlying http servers.
+	for _, v := range s.servers {
+		v.close(ctx)
+	}
 	return nil
 }

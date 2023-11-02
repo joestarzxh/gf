@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -12,46 +12,32 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gogf/gf/text/gstr"
-
-	"github.com/gogf/gf/errors/gerror"
-
-	"github.com/gogf/gf/os/gres"
-
-	"github.com/gogf/gf/encoding/ghtml"
-	"github.com/gogf/gf/os/gfile"
-	"github.com/gogf/gf/os/gspath"
-	"github.com/gogf/gf/os/gtime"
+	"github.com/gogf/gf/v2/encoding/ghtml"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/internal/intlog"
+	"github.com/gogf/gf/v2/os/gfile"
+	"github.com/gogf/gf/v2/os/gres"
+	"github.com/gogf/gf/v2/os/gspath"
+	"github.com/gogf/gf/v2/os/gtime"
+	"github.com/gogf/gf/v2/text/gstr"
 )
 
 // ServeHTTP is the default handler for http request.
 // It should not create new goroutine handling the request as
 // it's called by am already created new goroutine from http.Server.
 //
-// This function also make serve implementing the interface of http.Handler.
+// This function also makes serve implementing the interface of http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Max body size limit.
 	if s.config.ClientMaxBodySize > 0 {
 		r.Body = http.MaxBytesReader(w, r.Body, s.config.ClientMaxBodySize)
 	}
-
 	// Rewrite feature checks.
 	if len(s.config.Rewrites) > 0 {
 		if rewrite, ok := s.config.Rewrites[r.URL.Path]; ok {
 			r.URL.Path = rewrite
 		}
-	}
-
-	// Remove char '/' in the tail of URI.
-	if r.URL.Path != "/" {
-		for len(r.URL.Path) > 0 && r.URL.Path[len(r.URL.Path)-1] == '/' {
-			r.URL.Path = r.URL.Path[:len(r.URL.Path)-1]
-		}
-	}
-
-	// Default URI value if it's empty.
-	if r.URL.Path == "" {
-		r.URL.Path = "/"
 	}
 
 	// Create a new request object.
@@ -65,20 +51,36 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			if exception := recover(); exception != nil {
 				request.Response.WriteStatus(http.StatusInternalServerError)
-				s.handleErrorLog(gerror.Newf("%v", exception), request)
+				if v, ok := exception.(error); ok {
+					if code := gerror.Code(v); code != gcode.CodeNil {
+						s.handleErrorLog(v, request)
+					} else {
+						s.handleErrorLog(gerror.WrapCodeSkip(gcode.CodeInternalPanic, 1, v, ""), request)
+					}
+				} else {
+					s.handleErrorLog(gerror.NewCodeSkipf(gcode.CodeInternalPanic, 1, "%+v", exception), request)
+				}
 			}
 		}
 		// access log handling.
 		s.handleAccessLog(request)
 		// Close the session, which automatically update the TTL
 		// of the session if it exists.
-		request.Session.Close()
+		if err := request.Session.Close(); err != nil {
+			intlog.Errorf(request.Context(), `%+v`, err)
+		}
 
 		// Close the request and response body
 		// to release the file descriptor in time.
-		request.Request.Body.Close()
+		err := request.Request.Body.Close()
+		if err != nil {
+			intlog.Errorf(request.Context(), `%+v`, err)
+		}
 		if request.Request.Response != nil {
-			request.Request.Response.Body.Close()
+			err = request.Request.Response.Body.Close()
+			if err != nil {
+				intlog.Errorf(request.Context(), `%+v`, err)
+			}
 		}
 	}()
 
@@ -97,7 +99,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Search the dynamic service handler.
-	request.handlers, request.hasHookHandler, request.hasServeHandler = s.getHandlersWithCache(request)
+	request.handlers,
+		request.serveHandler,
+		request.hasHookHandler,
+		request.hasServeHandler = s.getHandlersWithCache(request)
 
 	// Check the service type static or dynamic for current request.
 	if request.StaticFile != nil && request.StaticFile.IsDir && request.hasServeHandler {
@@ -105,7 +110,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// HOOK - BeforeServe
-	s.callHookHandler(HOOK_BEFORE_SERVE, request)
+	s.callHookHandler(HookBeforeServe, request)
 
 	// Core serving handling.
 	if !request.IsExited() {
@@ -133,76 +138,89 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// HOOK - AfterServe
 	if !request.IsExited() {
-		s.callHookHandler(HOOK_AFTER_SERVE, request)
+		s.callHookHandler(HookAfterServe, request)
 	}
 
 	// HOOK - BeforeOutput
 	if !request.IsExited() {
-		s.callHookHandler(HOOK_BEFORE_OUTPUT, request)
+		s.callHookHandler(HookBeforeOutput, request)
 	}
 
 	// HTTP status checking.
 	if request.Response.Status == 0 {
 		if request.StaticFile != nil || request.Middleware.served || request.Response.buffer.Len() > 0 {
 			request.Response.WriteHeader(http.StatusOK)
+		} else if err := request.GetError(); err != nil {
+			if request.Response.BufferLength() == 0 {
+				request.Response.Write(err.Error())
+			}
+			request.Response.WriteHeader(http.StatusInternalServerError)
 		} else {
 			request.Response.WriteHeader(http.StatusNotFound)
 		}
 	}
 	// HTTP status handler.
 	if request.Response.Status != http.StatusOK {
-		if f := s.getStatusHandler(request.Response.Status, request); f != nil {
+		statusFuncArray := s.getStatusHandler(request.Response.Status, request)
+		for _, f := range statusFuncArray {
 			// Call custom status handler.
 			niceCallFunc(func() {
 				f(request)
 			})
+			if request.IsExited() {
+				break
+			}
 		}
 	}
 
 	// Automatically set the session id to cookie
-	// if it creates a new session id in this request.
-	if request.Session.IsDirty() && request.Session.Id() != request.GetSessionId() {
-		request.Cookie.SetSessionId(request.Session.Id())
+	// if it creates a new session id in this request
+	// and SessionCookieOutput is enabled.
+	if s.config.SessionCookieOutput &&
+		request.Session.IsDirty() &&
+		request.Session.MustId() != request.GetSessionId() {
+		request.Cookie.SetSessionId(request.Session.MustId())
 	}
-	// Output the cookie content to client.
+	// Output the cookie content to the client.
 	request.Cookie.Flush()
-	// Output the buffer content to client.
+	// Output the buffer content to the client.
 	request.Response.Flush()
 	// HOOK - AfterOutput
 	if !request.IsExited() {
-		s.callHookHandler(HOOK_AFTER_OUTPUT, request)
+		s.callHookHandler(HookAfterOutput, request)
 	}
 }
 
 // searchStaticFile searches the file with given URI.
 // It returns a file struct specifying the file information.
-func (s *Server) searchStaticFile(uri string) *StaticFile {
-	var file *gres.File
-	var path string
-	var dir bool
+func (s *Server) searchStaticFile(uri string) *staticFile {
+	var (
+		file *gres.File
+		path string
+		dir  bool
+	)
 	// Firstly search the StaticPaths mapping.
 	if len(s.config.StaticPaths) > 0 {
 		for _, item := range s.config.StaticPaths {
-			if len(uri) >= len(item.prefix) && strings.EqualFold(item.prefix, uri[0:len(item.prefix)]) {
+			if len(uri) >= len(item.Prefix) && strings.EqualFold(item.Prefix, uri[0:len(item.Prefix)]) {
 				// To avoid case like: /static/style -> /static/style.css
-				if len(uri) > len(item.prefix) && uri[len(item.prefix)] != '/' {
+				if len(uri) > len(item.Prefix) && uri[len(item.Prefix)] != '/' {
 					continue
 				}
-				file = gres.GetWithIndex(item.path+uri[len(item.prefix):], s.config.IndexFiles)
+				file = gres.GetWithIndex(item.Path+uri[len(item.Prefix):], s.config.IndexFiles)
 				if file != nil {
-					return &StaticFile{
+					return &staticFile{
 						File:  file,
 						IsDir: file.FileInfo().IsDir(),
 					}
 				}
-				path, dir = gspath.Search(item.path, uri[len(item.prefix):], s.config.IndexFiles...)
+				path, dir = gspath.Search(item.Path, uri[len(item.Prefix):], s.config.IndexFiles...)
 				if path != "" {
-					return &StaticFile{
+					return &staticFile{
 						Path:  path,
 						IsDir: dir,
 					}
 				}
-
 			}
 		}
 	}
@@ -211,13 +229,13 @@ func (s *Server) searchStaticFile(uri string) *StaticFile {
 		for _, p := range s.config.SearchPaths {
 			file = gres.GetWithIndex(p+uri, s.config.IndexFiles)
 			if file != nil {
-				return &StaticFile{
+				return &staticFile{
 					File:  file,
 					IsDir: file.FileInfo().IsDir(),
 				}
 			}
 			if path, dir = gspath.Search(p, uri, s.config.IndexFiles...); path != "" {
-				return &StaticFile{
+				return &staticFile{
 					Path:  path,
 					IsDir: dir,
 				}
@@ -227,7 +245,7 @@ func (s *Server) searchStaticFile(uri string) *StaticFile {
 	// Lastly search the resource manager.
 	if len(s.config.StaticPaths) == 0 && len(s.config.SearchPaths) == 0 {
 		if file = gres.GetWithIndex(uri, s.config.IndexFiles); file != nil {
-			return &StaticFile{
+			return &staticFile{
 				File:  file,
 				IsDir: file.FileInfo().IsDir(),
 			}
@@ -236,9 +254,9 @@ func (s *Server) searchStaticFile(uri string) *StaticFile {
 	return nil
 }
 
-// serveFile serves the static file for client.
-// The optional parameter <allowIndex> specifies if allowing directory listing if <f> is directory.
-func (s *Server) serveFile(r *Request, f *StaticFile, allowIndex ...bool) {
+// serveFile serves the static file for the client.
+// The optional parameter `allowIndex` specifies if allowing directory listing if `f` is a directory.
+func (s *Server) serveFile(r *Request, f *staticFile, allowIndex ...bool) {
 	// Use resource file from memory.
 	if f.File != nil {
 		if f.IsDir {
@@ -249,8 +267,7 @@ func (s *Server) serveFile(r *Request, f *StaticFile, allowIndex ...bool) {
 			}
 		} else {
 			info := f.File.FileInfo()
-			r.Response.wroteHeader = true
-			http.ServeContent(r.Response.Writer.RawWriter(), r.Request, info.Name(), info.ModTime(), f.File)
+			r.Response.ServeContent(info.Name(), info.ModTime(), f.File)
 		}
 		return
 	}
@@ -274,12 +291,11 @@ func (s *Server) serveFile(r *Request, f *StaticFile, allowIndex ...bool) {
 			r.Response.WriteStatus(http.StatusForbidden)
 		}
 	} else {
-		r.Response.wroteHeader = true
-		http.ServeContent(r.Response.Writer.RawWriter(), r.Request, info.Name(), info.ModTime(), file)
+		r.Response.ServeContent(info.Name(), info.ModTime(), file)
 	}
 }
 
-// listDir lists the sub files of specified directory as HTML content to client.
+// listDir lists the sub files of specified directory as HTML content to the client.
 func (s *Server) listDir(r *Request, f http.File) {
 	files, err := f.Readdir(-1)
 	if err != nil {

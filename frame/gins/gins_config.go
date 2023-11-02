@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,11 +7,11 @@
 package gins
 
 import (
-	"github.com/gogf/gf/os/gcfg"
+	"github.com/gogf/gf/v2/os/gcfg"
 )
 
 // Config returns an instance of View with default settings.
-// The parameter <name> is the name for the instance.
+// The parameter `name` is the name for the instance.
 func Config(name ...string) *gcfg.Config {
 	return gcfg.Instance(name...)
 }

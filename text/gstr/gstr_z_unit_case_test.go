@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,10 +9,11 @@ package gstr_test
 import (
 	"testing"
 
-	"github.com/gogf/gf/text/gstr"
+	"github.com/gogf/gf/v2/test/gtest"
+	"github.com/gogf/gf/v2/text/gstr"
 )
 
-func Test_CamelCase(t *testing.T) {
+func Test_CaseCamel(t *testing.T) {
 	cases := [][]string{
 		{"test_case", "TestCase"},
 		{"test", "Test"},
@@ -28,14 +29,14 @@ func Test_CamelCase(t *testing.T) {
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.CamelCase(in)
+		result := gstr.CaseCamel(in)
 		if result != out {
 			t.Error("'" + result + "' != '" + out + "'")
 		}
 	}
 }
 
-func Test_CamelLowerCase(t *testing.T) {
+func Test_CaseCamelLower(t *testing.T) {
 	cases := [][]string{
 		{"foo-bar", "fooBar"},
 		{"TestCase", "testCase"},
@@ -45,14 +46,14 @@ func Test_CamelLowerCase(t *testing.T) {
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.CamelLowerCase(in)
+		result := gstr.CaseCamelLower(in)
 		if result != out {
 			t.Error("'" + result + "' != '" + out + "'")
 		}
 	}
 }
 
-func Test_SnakeCase(t *testing.T) {
+func Test_CaseSnake(t *testing.T) {
 	cases := [][]string{
 		{"testCase", "test_case"},
 		{"TestCase", "test_case"},
@@ -75,14 +76,14 @@ func Test_SnakeCase(t *testing.T) {
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.SnakeCase(in)
+		result := gstr.CaseSnake(in)
 		if result != out {
 			t.Error("'" + in + "'('" + result + "' != '" + out + "')")
 		}
 	}
 }
 
-func Test_DelimitedCase(t *testing.T) {
+func Test_CaseDelimited(t *testing.T) {
 	cases := [][]string{
 		{"testCase", "test@case"},
 		{"TestCase", "test@case"},
@@ -106,70 +107,71 @@ func Test_DelimitedCase(t *testing.T) {
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.DelimitedCase(in, '@')
+		result := gstr.CaseDelimited(in, '@')
 		if result != out {
 			t.Error("'" + in + "' ('" + result + "' != '" + out + "')")
 		}
 	}
 }
 
-func Test_SnakeScreamingCase(t *testing.T) {
+func Test_CaseSnakeScreaming(t *testing.T) {
 	cases := [][]string{
 		{"testCase", "TEST_CASE"},
 	}
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.SnakeScreamingCase(in)
+		result := gstr.CaseSnakeScreaming(in)
 		if result != out {
 			t.Error("'" + result + "' != '" + out + "'")
 		}
 	}
 }
 
-func Test_KebabCase(t *testing.T) {
+func Test_CaseKebab(t *testing.T) {
 	cases := [][]string{
 		{"testCase", "test-case"},
+		{"optimization1.0.0", "optimization-1-0-0"},
 	}
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.KebabCase(in)
+		result := gstr.CaseKebab(in)
 		if result != out {
 			t.Error("'" + result + "' != '" + out + "'")
 		}
 	}
 }
 
-func Test_KebabScreamingCase(t *testing.T) {
+func Test_CaseKebabScreaming(t *testing.T) {
 	cases := [][]string{
 		{"testCase", "TEST-CASE"},
 	}
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.KebabScreamingCase(in)
+		result := gstr.CaseKebabScreaming(in)
 		if result != out {
 			t.Error("'" + result + "' != '" + out + "'")
 		}
 	}
 }
 
-func Test_DelimitedScreamingCase(t *testing.T) {
+func Test_CaseDelimitedScreaming(t *testing.T) {
 	cases := [][]string{
 		{"testCase", "TEST.CASE"},
 	}
 	for _, i := range cases {
 		in := i[0]
 		out := i[1]
-		result := gstr.DelimitedScreamingCase(in, '.', true)
+		result := gstr.CaseDelimitedScreaming(in, '.', true)
 		if result != out {
 			t.Error("'" + result + "' != '" + out + "'")
 		}
 	}
 }
 
-func TestSnakeFirstUpperCase(t *testing.T) {
+func Test_CaseSnakeFirstUpper(t *testing.T) {
 	cases := [][]string{
 		{"RGBCodeMd5", "rgb_code_md5"},
 		{"testCase", "test_case"},
@@ -181,13 +183,76 @@ func TestSnakeFirstUpperCase(t *testing.T) {
 		{"User_ID", "user_id"},
 		{"user_id", "user_id"},
 		{"md5", "md5"},
+		{"Numbers2And55With000", "numbers2_and55_with000"},
 	}
-	for _, i := range cases {
-		in := i[0]
-		out := i[1]
-		result := gstr.SnakeFirstUpperCase(in)
-		if result != out {
-			t.Error("'" + result + "' != '" + out + "'")
+	gtest.C(t, func(t *gtest.T) {
+		for _, item := range cases {
+			t.Assert(gstr.CaseSnakeFirstUpper(item[0]), item[1])
 		}
+
+		t.Assert(gstr.CaseSnakeFirstUpper("RGBCodeMd5", "."), "rgb.code.md5")
+	})
+
+}
+func Test_CaseTypeMatch(t *testing.T) {
+	caseTypes := []gstr.CaseType{
+		gstr.Camel,
+		gstr.CamelLower,
+		gstr.Snake,
+		gstr.SnakeFirstUpper,
+		gstr.SnakeScreaming,
+		gstr.Kebab,
+		gstr.KebabScreaming,
+		gstr.Lower,
+		"test", // invalid case type
 	}
+	testCaseTypes := []string{
+		"camel",
+		"camelLower",
+		"snake",
+		"snakeFirstUpper",
+		"snakeScreaming",
+		"kebab",
+		"kebabScreaming",
+		"lower",
+		"test",
+	}
+	gtest.C(t, func(t *gtest.T) {
+		for i := 0; i < len(caseTypes); i++ {
+			t.Assert(gstr.CaseTypeMatch(testCaseTypes[i]), caseTypes[i])
+		}
+	})
+}
+
+func Test_CaseConvert(t *testing.T) {
+	caseTypes := []gstr.CaseType{
+		gstr.Camel,
+		gstr.CamelLower,
+		gstr.Snake,
+		gstr.SnakeFirstUpper,
+		gstr.SnakeScreaming,
+		gstr.Kebab,
+		gstr.KebabScreaming,
+		gstr.Lower,
+		"test", // invalid case type
+		"",     // invalid case type
+	}
+	testCaseTypes := []string{
+		"AnyKindOfString",    // Camel
+		"anyKindOfString",    // CamelLower
+		"any_kind_of_string", // Snake
+		"any_kind_of_string", // SnakeFirstUpper
+		"ANY_KIND_OF_STRING", // SnakeScreaming
+		"any-kind-of-string", // Kebab
+		"ANY-KIND-OF-STRING", // KebabScreaming
+		"any_kind_of_string", // Lower
+		"any_kind_of_string", // invalid case type
+		"any_kind_of_string", // invalid case type
+	}
+	gtest.C(t, func(t *gtest.T) {
+		for i := 0; i < len(caseTypes); i++ {
+			t.Assert(gstr.CaseConvert("any_kind_of_string", caseTypes[i]), testCaseTypes[i])
+			t.Logf("test case: %s success", caseTypes[i])
+		}
+	})
 }

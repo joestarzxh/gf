@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,12 +7,14 @@
 package gdb_test
 
 import (
-	"github.com/gogf/gf/database/gdb"
-	"github.com/gogf/gf/frame/g"
+	"context"
+
+	"github.com/gogf/gf/v2/database/gdb"
+	"github.com/gogf/gf/v2/frame/g"
 )
 
-func Example_transaction() {
-	db.Transaction(func(tx *gdb.TX) error {
+func ExampleTransaction() {
+	g.DB().Transaction(context.TODO(), func(ctx context.Context, tx gdb.TX) error {
 		// user
 		result, err := tx.Insert("user", g.Map{
 			"passport": "john",

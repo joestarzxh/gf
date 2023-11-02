@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,15 +7,16 @@
 package ghttp
 
 import (
-	"github.com/gogf/gf/errors/gerror"
+	"context"
 	"net/http"
-	"reflect"
 
-	"github.com/gogf/gf/util/gutil"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/util/gutil"
 )
 
-// Middleware is the plugin for request workflow management.
-type Middleware struct {
+// middleware is the plugin for request workflow management.
+type middleware struct {
 	served         bool     // Is the request served, which is used for checking response status 404.
 	request        *Request // The request object pointer.
 	handlerIndex   int      // Index number for executing sequence purpose for handler items.
@@ -24,30 +25,31 @@ type Middleware struct {
 
 // Next calls the next workflow handler.
 // It's an important function controlling the workflow of the server request execution.
-func (m *Middleware) Next() {
-	var item *handlerParsedItem
+func (m *middleware) Next() {
+	var item *HandlerItemParsed
 	var loop = true
 	for loop {
-		// Check whether the request is exited.
+		// Check whether the request is excited.
 		if m.request.IsExited() || m.handlerIndex >= len(m.request.handlers) {
 			break
 		}
 		item = m.request.handlers[m.handlerIndex]
 		// Filter the HOOK handlers, which are designed to be called in another standalone procedure.
-		if item.handler.itemType == gHANDLER_TYPE_HOOK {
+		if item.Handler.Type == HandlerTypeHook {
 			m.handlerIndex++
 			continue
 		}
 		// Current router switching.
-		m.request.Router = item.handler.router
+		m.request.Router = item.Handler.Router
 
 		// Router values switching.
-		m.request.routerMap = item.values
+		m.request.routerMap = item.Values
 
-		gutil.TryCatch(func() {
+		var ctx = m.request.Context()
+		gutil.TryCatch(ctx, func(ctx context.Context) {
 			// Execute bound middleware array of the item if it's not empty.
-			if m.handlerMDIndex < len(item.handler.middleware) {
-				md := item.handler.middleware[m.handlerMDIndex]
+			if m.handlerMDIndex < len(item.Handler.Middleware) {
+				md := item.Handler.Middleware[m.handlerMDIndex]
 				m.handlerMDIndex++
 				niceCallFunc(func() {
 					md(m.request)
@@ -57,84 +59,61 @@ func (m *Middleware) Next() {
 			}
 			m.handlerIndex++
 
-			switch item.handler.itemType {
-			// Service controller.
-			case gHANDLER_TYPE_CONTROLLER:
-				m.served = true
-				if m.request.IsExited() {
-					break
-				}
-				c := reflect.New(item.handler.ctrlInfo.reflect)
-				niceCallFunc(func() {
-					c.MethodByName("Init").Call([]reflect.Value{reflect.ValueOf(m.request)})
-				})
-				if !m.request.IsExited() {
-					niceCallFunc(func() {
-						c.MethodByName(item.handler.ctrlInfo.name).Call(nil)
-					})
-				}
-				if !m.request.IsExited() {
-					niceCallFunc(func() {
-						c.MethodByName("Shut").Call(nil)
-					})
-				}
-
+			switch item.Handler.Type {
 			// Service object.
-			case gHANDLER_TYPE_OBJECT:
+			case HandlerTypeObject:
 				m.served = true
 				if m.request.IsExited() {
 					break
 				}
-				if item.handler.initFunc != nil {
+				if item.Handler.InitFunc != nil {
 					niceCallFunc(func() {
-						item.handler.initFunc(m.request)
+						item.Handler.InitFunc(m.request)
 					})
 				}
 				if !m.request.IsExited() {
-					niceCallFunc(func() {
-						item.handler.itemFunc(m.request)
-					})
+					m.callHandlerFunc(item.Handler.Info)
 				}
-				if !m.request.IsExited() && item.handler.shutFunc != nil {
+				if !m.request.IsExited() && item.Handler.ShutFunc != nil {
 					niceCallFunc(func() {
-						item.handler.shutFunc(m.request)
+						item.Handler.ShutFunc(m.request)
 					})
 				}
 
 			// Service handler.
-			case gHANDLER_TYPE_HANDLER:
+			case HandlerTypeHandler:
 				m.served = true
 				if m.request.IsExited() {
 					break
 				}
 				niceCallFunc(func() {
-					item.handler.itemFunc(m.request)
+					m.callHandlerFunc(item.Handler.Info)
 				})
 
 			// Global middleware array.
-			case gHANDLER_TYPE_MIDDLEWARE:
+			case HandlerTypeMiddleware:
 				niceCallFunc(func() {
-					item.handler.itemFunc(m.request)
+					item.Handler.Info.Func(m.request)
 				})
 				// It does not continue calling next middleware after another middleware done.
 				// There should be a "Next" function to be called in the middleware in order to manage the workflow.
 				loop = false
 			}
-		}, func(exception interface{}) {
-			if e, ok := exception.(gerror.ApiStack); ok {
+		}, func(ctx context.Context, exception error) {
+			if gerror.HasStack(exception) {
 				// It's already an error that has stack info.
-				m.request.error = e.(error)
+				m.request.error = exception
 			} else {
 				// Create a new error with stack info.
 				// Note that there's a skip pointing the start stacktrace
 				// of the real error point.
-				m.request.error = gerror.NewfSkip(1, "%v", exception)
+				m.request.error = gerror.WrapCodeSkip(gcode.CodeInternalError, 1, exception, "")
 			}
 			m.request.Response.WriteStatus(http.StatusInternalServerError, exception)
 			loop = false
 		})
 	}
-	// Check the http status code after all handler and middleware done.
+	// Check the http status code after all handlers and middleware done.
 	if m.request.IsExited() || m.handlerIndex >= len(m.request.handlers) {
 		if m.request.Response.Status == 0 {
 			if m.request.Middleware.served {
@@ -144,4 +123,10 @@ func (m *Middleware) Next() {
 			}
 		}
 	}
+}
+
+func (m *middleware) callHandlerFunc(funcInfo handlerFuncInfo) {
+	niceCallFunc(func() {
+		funcInfo.Func(m.request)
+	})
 }

@@ -1,21 +1,30 @@
-module github.com/gogf/gf
+module github.com/gogf/gf/v2
 
-go 1.11
+go 1.18
 
 require (
-	github.com/BurntSushi/toml v0.3.1
-	github.com/clbanning/mxj v1.8.5-0.20200714211355-ff02cfb8ea28
-	github.com/fsnotify/fsnotify v1.4.7
-	github.com/go-sql-driver/mysql v1.5.0
-	github.com/gomodule/redigo v2.0.0+incompatible
-	github.com/gorilla/websocket v1.4.1
-	github.com/gqcn/structs v1.1.1
-	github.com/grokify/html-strip-tags-go v0.0.0-20190921062105-daaa06bf1aaf
-	github.com/json-iterator/go v1.1.10
-	github.com/mattn/go-runewidth v0.0.9 // indirect
-	github.com/olekukonko/tablewriter v0.0.1
-	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
-	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
-	golang.org/x/text v0.3.2
-	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
+	github.com/BurntSushi/toml v1.2.0
+	github.com/clbanning/mxj/v2 v2.7.0
+	github.com/fatih/color v1.15.0
+	github.com/fsnotify/fsnotify v1.7.0
+	github.com/gorilla/websocket v1.5.0
+	github.com/grokify/html-strip-tags-go v0.0.1
+	github.com/magiconair/properties v1.8.6
+	github.com/olekukonko/tablewriter v0.0.5
+	go.opentelemetry.io/otel v1.14.0
+	go.opentelemetry.io/otel/sdk v1.14.0
+	go.opentelemetry.io/otel/trace v1.14.0
+	golang.org/x/net v0.17.0
+	golang.org/x/text v0.13.0
+	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
+	github.com/rivo/uniseg v0.4.4 // indirect
+	golang.org/x/sys v0.13.0 // indirect
 )

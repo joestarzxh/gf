@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,48 +7,68 @@
 package gins
 
 import (
+	"context"
 	"fmt"
-	"github.com/gogf/gf/database/gredis"
-	"github.com/gogf/gf/util/gconv"
-	"github.com/gogf/gf/util/gutil"
-)
 
-const (
-	gFRAME_CORE_COMPONENT_NAME_REDIS = "gf.core.component.redis"
-	gREDIS_NODE_NAME                 = "redis"
+	"github.com/gogf/gf/v2/database/gredis"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/internal/consts"
+	"github.com/gogf/gf/v2/internal/instance"
+	"github.com/gogf/gf/v2/internal/intlog"
+	"github.com/gogf/gf/v2/util/gconv"
+	"github.com/gogf/gf/v2/util/gutil"
 )
 
 // Redis returns an instance of redis client with specified configuration group name.
+// Note that it panics if any error occurs duration instance creating.
 func Redis(name ...string) *gredis.Redis {
-	config := Config()
-	group := gredis.DEFAULT_GROUP_NAME
+	var (
+		err   error
+		ctx   = context.Background()
+		group = gredis.DefaultGroupName
+	)
 	if len(name) > 0 && name[0] != "" {
 		group = name[0]
 	}
-	instanceKey := fmt.Sprintf("%s.%s", gFRAME_CORE_COMPONENT_NAME_REDIS, group)
-	result := instances.GetOrSetFuncLock(instanceKey, func() interface{} {
+	instanceKey := fmt.Sprintf("%s.%s", frameCoreComponentNameRedis, group)
+	result := instance.GetOrSetFuncLock(instanceKey, func() interface{} {
 		// If already configured, it returns the redis instance.
 		if _, ok := gredis.GetConfig(group); ok {
 			return gredis.Instance(group)
 		}
-		// Or else, it parses the default configuration file and returns a new redis instance.
-		var m map[string]interface{}
-		if _, v := gutil.MapPossibleItemByKey(Config().GetMap("."), gREDIS_NODE_NAME); v != nil {
-			m = gconv.Map(v)
-		}
-		if len(m) > 0 {
-			if v, ok := m[group]; ok {
-				redisConfig, err := gredis.ConfigFromStr(gconv.String(v))
-				if err != nil {
-					panic(err)
-				}
-				return gredis.New(redisConfig)
-			} else {
-				panic(fmt.Sprintf(`configuration for redis not found for group "%s"`, group))
+		if Config().Available(ctx) {
+			var (
+				configMap   map[string]interface{}
+				redisConfig *gredis.Config
+				redisClient *gredis.Redis
+			)
+			if configMap, err = Config().Data(ctx); err != nil {
+				intlog.Errorf(ctx, `retrieve config data map failed: %+v`, err)
 			}
-		} else {
-			panic(fmt.Sprintf(`incomplete configuration for redis: "redis" node not found in config file "%s"`, config.FilePath()))
+			if _, v := gutil.MapPossibleItemByKey(configMap, consts.ConfigNodeNameRedis); v != nil {
+				configMap = gconv.Map(v)
+			}
+			if len(configMap) > 0 {
+				if v, ok := configMap[group]; ok {
+					if redisConfig, err = gredis.ConfigFromMap(gconv.Map(v)); err != nil {
+						panic(err)
+					}
+				} else {
+					intlog.Printf(ctx, `missing configuration for redis group "%s"`, group)
+				}
+			} else {
+				intlog.Print(ctx, `missing configuration for redis: "redis" node not found`)
+			}
+			if redisClient, err = gredis.New(redisConfig); err != nil {
+				panic(err)
+			}
+			return redisClient
 		}
+		panic(gerror.NewCode(
+			gcode.CodeMissingConfiguration,
+			`no configuration found for creating redis client`,
+		))
 		return nil
 	})
 	if result != nil {

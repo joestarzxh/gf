@@ -1,4 +1,4 @@
-// Copyright 2020 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,14 +7,15 @@
 package gvar_test
 
 import (
-	"github.com/gogf/gf/container/gvar"
-	"github.com/gogf/gf/frame/g"
-	"github.com/gogf/gf/test/gtest"
-	"github.com/gogf/gf/util/gconv"
 	"testing"
+
+	"github.com/gogf/gf/v2/container/gvar"
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/test/gtest"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
-func Test_Struct(t *testing.T) {
+func TestVar_Struct(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		type StTest struct {
 			Test int
@@ -42,7 +43,7 @@ func Test_Struct(t *testing.T) {
 	})
 }
 
-func Test_Var_Attribute_Struct(t *testing.T) {
+func TestVar_Var_Attribute_Struct(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		type User struct {
 			Uid  int
@@ -54,7 +55,7 @@ func Test_Var_Attribute_Struct(t *testing.T) {
 				"uid":  gvar.New(1),
 				"name": gvar.New("john"),
 			}, user)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(user.Uid, 1)
 		t.Assert(user.Name, "john")
 	})
@@ -69,7 +70,7 @@ func Test_Var_Attribute_Struct(t *testing.T) {
 				"uid":  gvar.New(1),
 				"name": gvar.New("john"),
 			}, &user)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 		t.Assert(user.Uid, 1)
 		t.Assert(user.Name, "john")
 	})

@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with gm file,
@@ -12,15 +12,21 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/gogf/gf/container/gmap"
+	"github.com/gogf/gf/v2/container/gmap"
 )
 
 var anyAnyMap = gmap.NewAnyAnyMap(true)
+
 var intIntMap = gmap.NewIntIntMap(true)
+
 var intAnyMap = gmap.NewIntAnyMap(true)
+
 var intStrMap = gmap.NewIntStrMap(true)
+
 var strIntMap = gmap.NewStrIntMap(true)
+
 var strAnyMap = gmap.NewStrAnyMap(true)
+
 var strStrMap = gmap.NewStrStrMap(true)
 
 func Benchmark_IntIntMap_Set(b *testing.B) {

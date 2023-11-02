@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -8,283 +8,162 @@ package ghttp
 
 import (
 	"bytes"
-	"errors"
+	"context"
 	"fmt"
-	"github.com/gogf/gf/debug/gdebug"
-	"github.com/gogf/gf/internal/intlog"
 	"net/http"
 	"os"
-	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/gogf/gf/os/gsession"
-
-	"github.com/gogf/gf/container/garray"
-	"github.com/gogf/gf/container/gmap"
-	"github.com/gogf/gf/container/gtype"
-	"github.com/gogf/gf/os/gcache"
-	"github.com/gogf/gf/os/genv"
-	"github.com/gogf/gf/os/gfile"
-	"github.com/gogf/gf/os/glog"
-	"github.com/gogf/gf/os/gproc"
-	"github.com/gogf/gf/os/gtimer"
-	"github.com/gogf/gf/text/gregex"
-	"github.com/gogf/gf/util/gconv"
-	"github.com/gorilla/websocket"
 	"github.com/olekukonko/tablewriter"
-)
 
-type (
-	// Server wraps the http.Server and provides more feature.
-	Server struct {
-		name             string                           // Unique name for instance management.
-		config           ServerConfig                     // Configuration.
-		plugins          []Plugin                         // Plugin array.
-		servers          []*gracefulServer                // Underlying http.Server array.
-		serverCount      *gtype.Int                       // Underlying http.Server count.
-		closeChan        chan struct{}                    // Used for underlying server closing event notification.
-		serveTree        map[string]interface{}           // The route map tree.
-		serveCache       *gcache.Cache                    // Server cache for internal usage.
-		routesMap        map[string][]registeredRouteItem // Route map mainly for route dumps and repeated route checks.
-		statusHandlerMap map[string]HandlerFunc           // Custom status handler map.
-		sessionManager   *gsession.Manager                // Session manager.
-	}
-
-	// Router object.
-	Router struct {
-		Uri      string   // URI.
-		Method   string   // HTTP method
-		Domain   string   // Bound domain.
-		RegRule  string   // Parsed regular expression for route matching.
-		RegNames []string // Parsed router parameter names.
-		Priority int      // Just for reference.
-	}
-
-	// Router item just for route dumps.
-	RouterItem struct {
-		Server           string       // Server name.
-		Address          string       // Listening address.
-		Domain           string       // Bound domain.
-		Type             int          // Router type.
-		Middleware       string       // Bound middleware.
-		Method           string       // Handler method name.
-		Route            string       // Route URI.
-		Priority         int          // Just for reference.
-		IsServiceHandler bool         // Is service handler.
-		handler          *handlerItem // The handler.
-	}
-
-	// handlerItem is the registered handler for route handling,
-	// including middleware and hook functions.
-	handlerItem struct {
-		itemId     int                // Unique handler item id mark.
-		itemName   string             // Handler name, which is automatically retrieved from runtime stack when registered.
-		itemType   int                // Handler type: object/handler/controller/middleware/hook.
-		itemFunc   HandlerFunc        // Handler address.
-		initFunc   HandlerFunc        // Initialization function when request enters the object(only available for object register type).
-		shutFunc   HandlerFunc        // Shutdown function when request leaves out the object(only available for object register type).
-		middleware []HandlerFunc      // Bound middleware array.
-		ctrlInfo   *handlerController // Controller information for reflect usage.
-		hookName   string             // Hook type name.
-		router     *Router            // Router object.
-		source     string             // Source file path:line when registering.
-	}
-
-	// handlerParsedItem is the item parsed from URL.Path.
-	handlerParsedItem struct {
-		handler *handlerItem      // Handler information.
-		values  map[string]string // Router values parsed from URL.Path.
-	}
-
-	// handlerController is the controller information used for reflect.
-	handlerController struct {
-		name    string       // Handler method name.
-		reflect reflect.Type // Reflect type of the controller.
-	}
-
-	// registeredRouteItem stores the information of the router and is used for route map.
-	registeredRouteItem struct {
-		source  string       // Source file path and its line number.
-		handler *handlerItem // Handler object.
-	}
-
-	// Request handler function.
-	HandlerFunc = func(r *Request)
-
-	// Listening file descriptor mapping.
-	// The key is either "http" or "https" and the value is its FD.
-	listenerFdMap = map[string]string
-)
-
-const (
-	SERVER_STATUS_STOPPED    = 0
-	SERVER_STATUS_RUNNING    = 1
-	HOOK_BEFORE_SERVE        = "HOOK_BEFORE_SERVE"
-	HOOK_AFTER_SERVE         = "HOOK_AFTER_SERVE"
-	HOOK_BEFORE_OUTPUT       = "HOOK_BEFORE_OUTPUT"
-	HOOK_AFTER_OUTPUT        = "HOOK_AFTER_OUTPUT"
-	HTTP_METHODS             = "GET,PUT,POST,DELETE,PATCH,HEAD,CONNECT,OPTIONS,TRACE"
-	gDEFAULT_SERVER          = "default"
-	gDEFAULT_DOMAIN          = "default"
-	gDEFAULT_METHOD          = "ALL"
-	gHANDLER_TYPE_HANDLER    = 1
-	gHANDLER_TYPE_OBJECT     = 2
-	gHANDLER_TYPE_CONTROLLER = 3
-	gHANDLER_TYPE_MIDDLEWARE = 4
-	gHANDLER_TYPE_HOOK       = 5
-	gEXCEPTION_EXIT          = "exit"
-	gEXCEPTION_EXIT_ALL      = "exit_all"
-	gEXCEPTION_EXIT_HOOK     = "exit_hook"
-	gROUTE_CACHE_DURATION    = time.Hour
-)
-
-var (
-	// methodsMap stores all supported HTTP method,
-	// it is used for quick HTTP method searching using map.
-	methodsMap = make(map[string]struct{})
-
-	// serverMapping stores more than one server instances for current process.
-	// The key is the name of the server, and the value is its instance.
-	serverMapping = gmap.NewStrAnyMap(true)
-
-	// serverRunning marks the running server count.
-	// If there no successful server running or all servers shutdown, this value is 0.
-	serverRunning = gtype.NewInt()
-
-	// wsUpgrader is the default up-grader configuration for websocket.
-	wsUpgrader = websocket.Upgrader{
-		// It does not check the origin in default, the application can do it itself.
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
-	}
-	// allDoneChan is the event for all server have done its serving and exit.
-	// It is used for process blocking purpose.
-	allDoneChan = make(chan struct{}, 1000)
-
-	// serverProcessInited is used for lazy initialization for server.
-	// The process can only be initialized once.
-	serverProcessInited = gtype.NewBool()
-
-	// gracefulEnabled is used for graceful reload feature, which is false in default.
-	gracefulEnabled = false
+	"github.com/gogf/gf/v2/container/garray"
+	"github.com/gogf/gf/v2/container/gset"
+	"github.com/gogf/gf/v2/container/gtype"
+	"github.com/gogf/gf/v2/debug/gdebug"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/internal/intlog"
+	"github.com/gogf/gf/v2/net/ghttp/internal/swaggerui"
+	"github.com/gogf/gf/v2/net/goai"
+	"github.com/gogf/gf/v2/net/gsvc"
+	"github.com/gogf/gf/v2/os/gcache"
+	"github.com/gogf/gf/v2/os/gctx"
+	"github.com/gogf/gf/v2/os/genv"
+	"github.com/gogf/gf/v2/os/gfile"
+	"github.com/gogf/gf/v2/os/glog"
+	"github.com/gogf/gf/v2/os/gproc"
+	"github.com/gogf/gf/v2/os/gsession"
+	"github.com/gogf/gf/v2/os/gtimer"
+	"github.com/gogf/gf/v2/text/gregex"
+	"github.com/gogf/gf/v2/text/gstr"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
 func init() {
-	// Initialize the methods map.
-	for _, v := range strings.Split(HTTP_METHODS, ",") {
+	// Initialize the method map.
+	for _, v := range strings.Split(supportedHttpMethods, ",") {
 		methodsMap[v] = struct{}{}
 	}
 }
 
-// SetGraceful enables/disables the graceful reload feature for server,
-// which is false in default.
-//
-// Note that this feature switch is not for single server instance but for whole process.
-// Deprecated, use configuration of ghttp.Server for controlling this feature.
-func SetGraceful(enabled bool) {
-	gracefulEnabled = enabled
-}
-
 // serverProcessInit initializes some process configurations, which can only be done once.
 func serverProcessInit() {
-	if !serverProcessInited.Cas(false, true) {
+	var ctx = context.TODO()
+	if !serverProcessInitialized.Cas(false, true) {
 		return
 	}
-	// This means it is a restart server, it should kill its parent before starting its listening,
+	// This means it is a restart server. It should kill its parent before starting its listening,
 	// to avoid duplicated port listening in two processes.
-	if genv.Get(gADMIN_ACTION_RESTART_ENVKEY) != "" {
-		if p, e := os.FindProcess(gproc.PPid()); e == nil {
-			p.Kill()
-			p.Wait()
+	if !genv.Get(adminActionRestartEnvKey).IsEmpty() {
+		if p, err := os.FindProcess(gproc.PPid()); err == nil {
+			if err = p.Kill(); err != nil {
+				intlog.Errorf(ctx, `%+v`, err)
+			}
+			if _, err = p.Wait(); err != nil {
+				intlog.Errorf(ctx, `%+v`, err)
+			}
 		} else {
-			glog.Error(e)
+			glog.Error(ctx, err)
 		}
 	}
 
-	// Signal handler.
-	go handleProcessSignal()
-
 	// Process message handler.
-	// It's enabled only graceful feature is enabled.
+	// It enabled only a graceful feature is enabled.
 	if gracefulEnabled {
-		intlog.Printf("%d: graceful reload feature is enabled", gproc.Pid())
+		intlog.Printf(ctx, "pid[%d]: graceful reload feature is enabled", gproc.Pid())
 		go handleProcessMessage()
 	} else {
-		intlog.Printf("%d: graceful reload feature is disabled", gproc.Pid())
+		intlog.Printf(ctx, "pid[%d]: graceful reload feature is disabled", gproc.Pid())
 	}
 
 	// It's an ugly calling for better initializing the main package path
 	// in source development environment. It is useful only be used in main goroutine.
-	// It fails retrieving the main package path in asynchronized goroutines.
+	// It fails to retrieve the main package path in asynchronous goroutines.
 	gfile.MainPkgPath()
 }
 
 // GetServer creates and returns a server instance using given name and default configurations.
-// Note that the parameter <name> should be unique for different servers. It returns an existing
-// server instance if given <name> is already existing in the server mapping.
+// Note that the parameter `name` should be unique for different servers. It returns an existing
+// server instance if given `name` is already existing in the server mapping.
 func GetServer(name ...interface{}) *Server {
-	serverName := gDEFAULT_SERVER
+	serverName := DefaultServerName
 	if len(name) > 0 && name[0] != "" {
 		serverName = gconv.String(name[0])
 	}
-	if s := serverMapping.Get(serverName); s != nil {
-		return s.(*Server)
-	}
-	s := &Server{
-		name:             serverName,
-		plugins:          make([]Plugin, 0),
-		servers:          make([]*gracefulServer, 0),
-		closeChan:        make(chan struct{}, 10000),
-		serverCount:      gtype.NewInt(),
-		statusHandlerMap: make(map[string]HandlerFunc),
-		serveTree:        make(map[string]interface{}),
-		serveCache:       gcache.New(),
-		routesMap:        make(map[string][]registeredRouteItem),
-	}
-	// Initialize the server using default configurations.
-	if err := s.SetConfig(Config()); err != nil {
-		panic(err)
-	}
-	// Record the server to internal server mapping by name.
-	serverMapping.Set(serverName, s)
-	return s
+	v := serverMapping.GetOrSetFuncLock(serverName, func() interface{} {
+		s := &Server{
+			instance:         serverName,
+			plugins:          make([]Plugin, 0),
+			servers:          make([]*gracefulServer, 0),
+			closeChan:        make(chan struct{}, 10000),
+			serverCount:      gtype.NewInt(),
+			statusHandlerMap: make(map[string][]HandlerFunc),
+			serveTree:        make(map[string]interface{}),
+			serveCache:       gcache.New(),
+			routesMap:        make(map[string][]*HandlerItem),
+			openapi:          goai.New(),
+			registrar:        gsvc.GetRegistry(),
+		}
+		// Initialize the server using default configurations.
+		if err := s.SetConfig(NewConfig()); err != nil {
+			panic(gerror.WrapCode(gcode.CodeInvalidConfiguration, err, ""))
+		}
+		// It enables OpenTelemetry for server in default.
+		s.Use(internalMiddlewareServerTracing)
+		return s
+	})
+	return v.(*Server)
 }
 
 // Start starts listening on configured port.
 // This function does not block the process, you can use function Wait blocking the process.
 func (s *Server) Start() error {
+	var ctx = gctx.GetInitCtx()
+
+	// Swagger UI.
+	if s.config.SwaggerPath != "" {
+		swaggerui.Init()
+		s.AddStaticPath(s.config.SwaggerPath, swaggerUIPackedPath)
+		s.BindHookHandler(s.config.SwaggerPath+"/*", HookBeforeServe, s.swaggerUI)
+	}
+
+	// OpenApi specification json producing handler.
+	if s.config.OpenApiPath != "" {
+		s.BindHandler(s.config.OpenApiPath, s.openapiSpec)
+	}
+
 	// Register group routes.
-	s.handlePreBindItems()
+	s.handlePreBindItems(ctx)
 
 	// Server process initialization, which can only be initialized once.
 	serverProcessInit()
 
 	// Server can only be run once.
-	if s.Status() == SERVER_STATUS_RUNNING {
-		return errors.New("[ghttp] server is already running")
+	if s.Status() == ServerStatusRunning {
+		return gerror.NewCode(gcode.CodeInvalidOperation, "server is already running")
 	}
 
 	// Logging path setting check.
-	if s.config.LogPath != "" {
+	if s.config.LogPath != "" && s.config.LogPath != s.config.Logger.GetPath() {
 		if err := s.config.Logger.SetPath(s.config.LogPath); err != nil {
-			return errors.New(fmt.Sprintf("[ghttp] set log path '%s' error: %v", s.config.LogPath, err))
+			return err
 		}
 	}
 	// Default session storage.
 	if s.config.SessionStorage == nil {
-		path := ""
+		sessionStoragePath := ""
 		if s.config.SessionPath != "" {
-			path = gfile.Join(s.config.SessionPath, s.name)
-			if !gfile.Exists(path) {
-				if err := gfile.Mkdir(path); err != nil {
-					return errors.New(fmt.Sprintf("[ghttp] mkdir failed for '%s': %v", path, err))
+			sessionStoragePath = gfile.Join(s.config.SessionPath, s.config.Name)
+			if !gfile.Exists(sessionStoragePath) {
+				if err := gfile.Mkdir(sessionStoragePath); err != nil {
+					return gerror.Wrapf(err, `mkdir failed for "%s"`, sessionStoragePath)
 				}
 			}
 		}
-		s.config.SessionStorage = gsession.NewStorageFile(path)
+		s.config.SessionStorage = gsession.NewStorageFile(sessionStoragePath, s.config.SessionMaxAge)
 	}
 	// Initialize session manager when start running.
 	s.sessionManager = gsession.New(
@@ -299,30 +178,34 @@ func (s *Server) Start() error {
 
 	// Default HTTP handler.
 	if s.config.Handler == nil {
-		s.config.Handler = s
+		s.config.Handler = s.ServeHTTP
 	}
 
 	// Install external plugins.
 	for _, p := range s.plugins {
 		if err := p.Install(s); err != nil {
-			s.Logger().Fatal(err)
+			s.Logger().Fatalf(ctx, `%+v`, err)
 		}
 	}
-	// Check the group routes again.
-	s.handlePreBindItems()
+	// Check the group routes again for internally registered routes.
+	s.handlePreBindItems(ctx)
 
-	// If there's no route registered  and no static service enabled,
+	// If there's no route registered and no static service enabled,
 	// it then returns an error of invalid usage of server.
 	if len(s.routesMap) == 0 && !s.config.FileServerEnabled {
-		return errors.New(`[ghttp] there's no route set or static feature enabled, did you forget import the router?`)
+		return gerror.NewCode(
+			gcode.CodeInvalidOperation,
+			`there's no route set or static feature enabled, did you forget import the router?`,
+		)
 	}
-
+	// ================================================================================================
 	// Start the HTTP server.
+	// ================================================================================================
 	reloaded := false
-	fdMapStr := genv.Get(gADMIN_ACTION_RELOAD_ENVKEY)
+	fdMapStr := genv.Get(adminActionReloadEnvKey).String()
 	if len(fdMapStr) > 0 {
 		sfm := bufferToServerFdMap([]byte(fdMapStr))
-		if v, ok := sfm[s.name]; ok {
+		if v, ok := sfm[s.config.Name]; ok {
 			s.startServer(v)
 			reloaded = true
 		}
@@ -331,84 +214,184 @@ func (s *Server) Start() error {
 		s.startServer(nil)
 	}
 
+	// Swagger UI info.
+	if s.config.SwaggerPath != "" {
+		s.Logger().Infof(
+			ctx,
+			`swagger ui is serving at address: %s%s/`,
+			s.getLocalListenedAddress(),
+			s.config.SwaggerPath,
+		)
+	}
+	// OpenApi specification info.
+	if s.config.OpenApiPath != "" {
+		s.Logger().Infof(
+			ctx,
+			`openapi specification is serving at address: %s%s`,
+			s.getLocalListenedAddress(),
+			s.config.OpenApiPath,
+		)
+	} else {
+		if s.config.SwaggerPath != "" {
+			s.Logger().Warning(
+				ctx,
+				`openapi specification is disabled but swagger ui is serving, which might make no sense`,
+			)
+		} else {
+			s.Logger().Info(
+				ctx,
+				`openapi specification is disabled`,
+			)
+		}
+	}
+
 	// If this is a child process, it then notifies its parent exit.
 	if gproc.IsChild() {
-		gtimer.SetTimeout(2*time.Second, func() {
-			if err := gproc.Send(gproc.PPid(), []byte("exit"), gADMIN_GPROC_COMM_GROUP); err != nil {
-				//glog.Error("[ghttp] server error in process communication:", err)
+		gtimer.SetTimeout(ctx, time.Duration(s.config.GracefulTimeout)*time.Second, func(ctx context.Context) {
+			if err := gproc.Send(gproc.PPid(), []byte("exit"), adminGProcCommGroup); err != nil {
+				intlog.Errorf(ctx, `server error in process communication: %+v`, err)
 			}
 		})
 	}
-	s.dumpRouterMap()
+	s.initOpenApi()
+	s.doServiceRegister()
+	s.doRouterMapDump()
+
 	return nil
 }
 
-// DumpRouterMap dumps the router map to the log.
-func (s *Server) dumpRouterMap() {
-	if s.config.DumpRouterMap && len(s.routesMap) > 0 {
+func (s *Server) getLocalListenedAddress() string {
+	return fmt.Sprintf(`http://127.0.0.1:%d`, s.GetListenedPort())
+}
+
+// doRouterMapDump checks and dumps the router map to the log.
+func (s *Server) doRouterMapDump() {
+	if !s.config.DumpRouterMap {
+		return
+	}
+
+	var (
+		ctx                          = context.TODO()
+		routes                       = s.GetRoutes()
+		isJustDefaultServerAndDomain = true
+		headers                      = []string{
+			"SERVER", "DOMAIN", "ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE",
+		}
+	)
+	for _, item := range routes {
+		if item.Server != DefaultServerName || item.Domain != DefaultDomainName {
+			isJustDefaultServerAndDomain = false
+			break
+		}
+	}
+	if isJustDefaultServerAndDomain {
+		headers = []string{"ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE"}
+	}
+	if len(routes) > 0 {
 		buffer := bytes.NewBuffer(nil)
 		table := tablewriter.NewWriter(buffer)
-		table.SetHeader([]string{"SERVER", "DOMAIN", "ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE"})
+		table.SetHeader(headers)
 		table.SetRowLine(true)
 		table.SetBorder(false)
 		table.SetCenterSeparator("|")
 
-		for _, item := range s.GetRouterArray() {
-			data := make([]string, 7)
-			data[0] = item.Server
-			data[1] = item.Domain
-			data[2] = item.Address
-			data[3] = item.Method
-			data[4] = item.Route
-			data[5] = item.handler.itemName
-			data[6] = item.Middleware
+		for _, item := range routes {
+			var (
+				data        = make([]string, 0)
+				handlerName = gstr.TrimRightStr(item.Handler.Name, "-fm")
+				middlewares = gstr.SplitAndTrim(item.Middleware, ",")
+			)
+			for k, v := range middlewares {
+				middlewares[k] = gstr.TrimRightStr(v, "-fm")
+			}
+			item.Middleware = gstr.Join(middlewares, "\n")
+			if isJustDefaultServerAndDomain {
+				data = append(
+					data,
+					item.Address,
+					item.Method,
+					item.Route,
+					handlerName,
+					item.Middleware,
+				)
+			} else {
+				data = append(
+					data,
+					item.Server,
+					item.Domain,
+					item.Address,
+					item.Method,
+					item.Route,
+					handlerName,
+					item.Middleware,
+				)
+			}
 			table.Append(data)
 		}
 		table.Render()
-		s.config.Logger.Header(false).Printf("\n%s", buffer.String())
+		s.config.Logger.Header(false).Printf(ctx, "\n%s", buffer.String())
 	}
 }
 
-// GetRouterArray retrieves and returns the router array.
-// The key of the returned map is the domain of the server.
-func (s *Server) GetRouterArray() []RouterItem {
-	m := make(map[string]*garray.SortedArray)
-	address := s.config.Address
+// GetOpenApi returns the OpenApi specification management object of current server.
+func (s *Server) GetOpenApi() *goai.OpenApiV3 {
+	return s.openapi
+}
+
+// GetRoutes retrieves and returns the router array.
+func (s *Server) GetRoutes() []RouterItem {
+	var (
+		m              = make(map[string]*garray.SortedArray)
+		routeFilterSet = gset.NewStrSet()
+		address        = s.GetListenedAddress()
+	)
 	if s.config.HTTPSAddr != "" {
 		if len(address) > 0 {
 			address += ","
 		}
 		address += "tls" + s.config.HTTPSAddr
 	}
-	for k, registeredItems := range s.routesMap {
+	for k, handlerItems := range s.routesMap {
 		array, _ := gregex.MatchString(`(.*?)%([A-Z]+):(.+)@(.+)`, k)
-		for index, registeredItem := range registeredItems {
-			item := RouterItem{
-				Server:     s.name,
-				Address:    address,
-				Domain:     array[4],
-				Type:       registeredItem.handler.itemType,
-				Middleware: array[1],
-				Method:     array[2],
-				Route:      array[3],
-				Priority:   len(registeredItems) - index - 1,
-				handler:    registeredItem.handler,
-			}
-			switch item.handler.itemType {
-			case gHANDLER_TYPE_CONTROLLER, gHANDLER_TYPE_OBJECT, gHANDLER_TYPE_HANDLER:
+		for index := len(handlerItems) - 1; index >= 0; index-- {
+			var (
+				handlerItem = handlerItems[index]
+				item        = RouterItem{
+					Server:     s.config.Name,
+					Address:    address,
+					Domain:     array[4],
+					Type:       handlerItem.Type,
+					Middleware: array[1],
+					Method:     array[2],
+					Route:      array[3],
+					Priority:   index,
+					Handler:    handlerItem,
+				}
+			)
+			switch item.Handler.Type {
+			case HandlerTypeObject, HandlerTypeHandler:
 				item.IsServiceHandler = true
-			case gHANDLER_TYPE_MIDDLEWARE:
+
+			case HandlerTypeMiddleware:
 				item.Middleware = "GLOBAL MIDDLEWARE"
 			}
-			if len(item.handler.middleware) > 0 {
-				for _, v := range item.handler.middleware {
+			// Repeated route filtering for dump.
+			var setKey = fmt.Sprintf(
+				`%s|%s|%s|%s`,
+				item.Method, item.Route, item.Domain, item.Type,
+			)
+			if !routeFilterSet.AddIfNotExist(setKey) {
+				continue
+			}
+			if len(item.Handler.Middleware) > 0 {
+				for _, v := range item.Handler.Middleware {
 					if item.Middleware != "" {
 						item.Middleware += ","
 					}
 					item.Middleware += gdebug.FuncName(v)
 				}
 			}
-			// If the domain does not exist in the dump map, it create the map.
+			// If the domain does not exist in the dump map, it creates the map.
 			// The value of the map is a custom sorted array.
 			if _, ok := m[item.Domain]; !ok {
 				// Sort in ASC order.
@@ -419,9 +402,9 @@ func (s *Server) GetRouterArray() []RouterItem {
 					if r = strings.Compare(item1.Domain, item2.Domain); r == 0 {
 						if r = strings.Compare(item1.Route, item2.Route); r == 0 {
 							if r = strings.Compare(item1.Method, item2.Method); r == 0 {
-								if item1.handler.itemType == gHANDLER_TYPE_MIDDLEWARE && item2.handler.itemType != gHANDLER_TYPE_MIDDLEWARE {
+								if item1.Handler.Type == HandlerTypeMiddleware && item2.Handler.Type != HandlerTypeMiddleware {
 									return -1
-								} else if item1.handler.itemType == gHANDLER_TYPE_MIDDLEWARE && item2.handler.itemType == gHANDLER_TYPE_MIDDLEWARE {
+								} else if item1.Handler.Type == HandlerTypeMiddleware && item2.Handler.Type == HandlerTypeMiddleware {
 									return 1
 								} else if r = strings.Compare(item1.Middleware, item2.Middleware); r == 0 {
 									r = item2.Priority - item1.Priority
@@ -435,6 +418,7 @@ func (s *Server) GetRouterArray() []RouterItem {
 			m[item.Domain].Add(item)
 		}
 	}
+
 	routerArray := make([]RouterItem, 0, 128)
 	for _, array := range m {
 		for _, v := range array.Slice() {
@@ -447,42 +431,62 @@ func (s *Server) GetRouterArray() []RouterItem {
 // Run starts server listening in blocking way.
 // It's commonly used for single server situation.
 func (s *Server) Run() {
+	var ctx = context.TODO()
+
 	if err := s.Start(); err != nil {
-		s.Logger().Fatal(err)
+		s.Logger().Fatalf(ctx, `%+v`, err)
 	}
-	// Blocking using channel.
+
+	// Signal handler in asynchronous way.
+	go handleProcessSignal()
+
+	// Blocking using channel for graceful restart.
 	<-s.closeChan
 	// Remove plugins.
 	if len(s.plugins) > 0 {
 		for _, p := range s.plugins {
-			intlog.Printf(`remove plugin: %s`, p.Name())
-			p.Remove()
+			intlog.Printf(ctx, `remove plugin: %s`, p.Name())
+			if err := p.Remove(); err != nil {
+				intlog.Errorf(ctx, "%+v", err)
+			}
 		}
 	}
-	s.Logger().Printf("[ghttp] %d: all servers shutdown", gproc.Pid())
+	s.doServiceDeregister()
+	s.Logger().Infof(ctx, "pid[%d]: all servers shutdown", gproc.Pid())
 }
 
 // Wait blocks to wait for all servers done.
-// It's commonly used in multiple servers situation.
+// It's commonly used in multiple server situation.
 func Wait() {
-	<-allDoneChan
+	var ctx = context.TODO()
+
+	// Signal handler in asynchronous way.
+	go handleProcessSignal()
+
+	<-allShutdownChan
+
 	// Remove plugins.
 	serverMapping.Iterator(func(k string, v interface{}) bool {
 		s := v.(*Server)
 		if len(s.plugins) > 0 {
 			for _, p := range s.plugins {
-				intlog.Printf(`remove plugin: %s`, p.Name())
-				p.Remove()
+				intlog.Printf(ctx, `remove plugin: %s`, p.Name())
+				if err := p.Remove(); err != nil {
+					intlog.Errorf(ctx, `%+v`, err)
+				}
 			}
 		}
 		return true
 	})
-	glog.Printf("[ghttp] %d: all servers shutdown", gproc.Pid())
+	glog.Infof(ctx, "pid[%d]: all servers shutdown", gproc.Pid())
 }
 
 // startServer starts the underlying server listening.
 func (s *Server) startServer(fdMap listenerFdMap) {
-	var httpsEnabled bool
+	var (
+		ctx          = context.TODO()
+		httpsEnabled bool
+	)
 	// HTTPS
 	if s.config.TLSConfig != nil || (s.config.HTTPSCertPath != "" && s.config.HTTPSKeyPath != "") {
 		if len(s.config.HTTPSAddr) == 0 {
@@ -490,7 +494,7 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 				s.config.HTTPSAddr = s.config.Address
 				s.config.Address = ""
 			} else {
-				s.config.HTTPSAddr = gDEFAULT_HTTPS_ADDR
+				s.config.HTTPSAddr = defaultHttpsAddr
 			}
 		}
 		httpsEnabled = len(s.config.HTTPSAddr) > 0
@@ -504,15 +508,17 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 			if len(v) == 0 {
 				continue
 			}
-			fd := 0
-			itemFunc := v
-			array := strings.Split(v, "#")
-			if len(array) > 1 {
-				itemFunc = array[0]
-				// The windows OS does not support socket file descriptor passing
+			var (
+				fd        = 0
+				itemFunc  = v
+				addrAndFd = strings.Split(v, "#")
+			)
+			if len(addrAndFd) > 1 {
+				itemFunc = addrAndFd[0]
+				// The Windows OS does not support socket file descriptor passing
 				// from parent process.
 				if runtime.GOOS != "windows" {
-					fd = gconv.Int(array[1])
+					fd = gconv.Int(addrAndFd[1])
 				}
 			}
 			if fd > 0 {
@@ -525,27 +531,29 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 	}
 	// HTTP
 	if !httpsEnabled && len(s.config.Address) == 0 {
-		s.config.Address = gDEFAULT_HTTP_ADDR
+		s.config.Address = defaultHttpAddr
 	}
 	var array []string
 	if v, ok := fdMap["http"]; ok && len(v) > 0 {
-		array = strings.Split(v, ",")
+		array = gstr.SplitAndTrim(v, ",")
 	} else {
-		array = strings.Split(s.config.Address, ",")
+		array = gstr.SplitAndTrim(s.config.Address, ",")
 	}
 	for _, v := range array {
 		if len(v) == 0 {
 			continue
 		}
-		fd := 0
-		itemFunc := v
-		array := strings.Split(v, "#")
-		if len(array) > 1 {
-			itemFunc = array[0]
-			// The windows OS does not support socket file descriptor passing
-			// from parent process.
+		var (
+			fd        = 0
+			itemFunc  = v
+			addrAndFd = strings.Split(v, "#")
+		)
+		if len(addrAndFd) > 1 {
+			itemFunc = addrAndFd[0]
+			// The Window OS does not support socket file descriptor passing
+			// from the parent process.
 			if runtime.GOOS != "windows" {
-				fd = gconv.Int(array[1])
+				fd = gconv.Int(addrAndFd[1])
 			}
 		}
 		if fd > 0 {
@@ -554,45 +562,57 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 			s.servers = append(s.servers, s.newGracefulServer(itemFunc))
 		}
 	}
-	// Start listening asynchronizedly.
+	// Start listening asynchronously.
 	serverRunning.Add(1)
+	var wg = sync.WaitGroup{}
 	for _, v := range s.servers {
+		wg.Add(1)
 		go func(server *gracefulServer) {
 			s.serverCount.Add(1)
-			err := (error)(nil)
+			var err error
+			// Create listener.
 			if server.isHttps {
-				err = server.ListenAndServeTLS(s.config.HTTPSCertPath, s.config.HTTPSKeyPath, s.config.TLSConfig)
+				err = server.CreateListenerTLS(
+					s.config.HTTPSCertPath, s.config.HTTPSKeyPath, s.config.TLSConfig,
+				)
 			} else {
-				err = server.ListenAndServe()
+				err = server.CreateListener()
 			}
+			if err != nil {
+				s.Logger().Fatalf(ctx, `%+v`, err)
+			}
+			wg.Done()
+			// Start listening and serving in blocking way.
+			err = server.Serve(ctx)
 			// The process exits if the server is closed with none closing error.
 			if err != nil && !strings.EqualFold(http.ErrServerClosed.Error(), err.Error()) {
-				s.Logger().Fatal(err)
+				s.Logger().Fatalf(ctx, `%+v`, err)
 			}
-			// If all the underlying servers shutdown, the process exits.
+			// If all the underlying servers' shutdown, the process exits.
 			if s.serverCount.Add(-1) < 1 {
 				s.closeChan <- struct{}{}
 				if serverRunning.Add(-1) < 1 {
-					serverMapping.Remove(s.name)
-					allDoneChan <- struct{}{}
+					serverMapping.Remove(s.instance)
+					allShutdownChan <- struct{}{}
 				}
 			}
 		}(v)
 	}
+	wg.Wait()
 }
 
 // Status retrieves and returns the server status.
-func (s *Server) Status() int {
+func (s *Server) Status() ServerStatus {
 	if serverRunning.Val() == 0 {
-		return SERVER_STATUS_STOPPED
+		return ServerStatusStopped
 	}
 	// If any underlying server is running, the server status is running.
 	for _, v := range s.servers {
-		if v.status == SERVER_STATUS_RUNNING {
-			return SERVER_STATUS_RUNNING
+		if v.status.Val() == ServerStatusRunning {
+			return ServerStatusRunning
 		}
 	}
-	return SERVER_STATUS_STOPPED
+	return ServerStatusStopped
 }
 
 // getListenerFdMap retrieves and returns the socket file descriptors.
@@ -619,15 +639,35 @@ func (s *Server) getListenerFdMap() map[string]string {
 	return m
 }
 
-// IsExitError checks if given error is an exit error of server.
-// This is used in old version of server for custom error handler.
-// Deprecated.
-func IsExitError(err interface{}) bool {
-	errStr := gconv.String(err)
-	if strings.EqualFold(errStr, gEXCEPTION_EXIT) ||
-		strings.EqualFold(errStr, gEXCEPTION_EXIT_ALL) ||
-		strings.EqualFold(errStr, gEXCEPTION_EXIT_HOOK) {
-		return true
+// GetListenedPort retrieves and returns one port which is listened by current server.
+func (s *Server) GetListenedPort() int {
+	ports := s.GetListenedPorts()
+	if len(ports) > 0 {
+		return ports[0]
 	}
-	return false
+	return 0
+}
+
+// GetListenedPorts retrieves and returns the ports which are listened by current server.
+func (s *Server) GetListenedPorts() []int {
+	ports := make([]int, 0)
+	for _, server := range s.servers {
+		ports = append(ports, server.GetListenedPort())
+	}
+	return ports
+}
+
+// GetListenedAddress retrieves and returns the address string which are listened by current server.
+func (s *Server) GetListenedAddress() string {
+	if !gstr.Contains(s.config.Address, FreePortAddress) {
+		return s.config.Address
+	}
+	var (
+		address       = s.config.Address
+		listenedPorts = s.GetListenedPorts()
+	)
+	for _, listenedPort := range listenedPorts {
+		address = gstr.Replace(address, FreePortAddress, fmt.Sprintf(`:%d`, listenedPort), 1)
+	}
+	return address
 }

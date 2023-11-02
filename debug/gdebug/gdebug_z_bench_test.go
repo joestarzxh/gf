@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -58,7 +58,7 @@ func Benchmark_StackOfStdlib(b *testing.B) {
 
 func Benchmark_StackWithFilter(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		StackWithFilter("test")
+		StackWithFilter([]string{"test"})
 	}
 }
 
@@ -70,7 +70,7 @@ func Benchmark_Caller(b *testing.B) {
 
 func Benchmark_CallerWithFilter(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		CallerWithFilter("test")
+		CallerWithFilter([]string{"test"})
 	}
 }
 

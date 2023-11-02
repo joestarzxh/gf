@@ -1,4 +1,4 @@
-// Copyright 2019-2020 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	gMAX_DEPTH  = 1000
-	gFILTER_KEY = "/debug/gdebug/gdebug"
+	maxCallerDepth = 1000
+	stackFilterKey = "/debug/gdebug/gdebug"
 )
 
 var (
@@ -30,10 +30,10 @@ var (
 
 func init() {
 	if goRootForFilter != "" {
-		goRootForFilter = strings.Replace(goRootForFilter, "\\", "/", -1)
+		goRootForFilter = strings.ReplaceAll(goRootForFilter, "\\", "/")
 	}
 	// Initialize internal package variable: selfPath.
-	selfPath, _ := exec.LookPath(os.Args[0])
+	selfPath, _ = exec.LookPath(os.Args[0])
 	if selfPath != "" {
 		selfPath, _ = filepath.Abs(selfPath)
 	}
@@ -42,36 +42,35 @@ func init() {
 	}
 }
 
-// CallerPath returns the function name and the absolute file path along with its line
+// Caller returns the function name and the absolute file path along with its line
 // number of the caller.
 func Caller(skip ...int) (function string, path string, line int) {
-	return CallerWithFilter("", skip...)
+	return CallerWithFilter(nil, skip...)
 }
 
-// CallerPathWithFilter returns the function name and the absolute file path along with
+// CallerWithFilter returns the function name and the absolute file path along with
 // its line number of the caller.
 //
-// The parameter <filter> is used to filter the path of the caller.
-func CallerWithFilter(filter string, skip ...int) (function string, path string, line int) {
-	number := 0
+// The parameter `filters` is used to filter the path of the caller.
+func CallerWithFilter(filters []string, skip ...int) (function string, path string, line int) {
+	var (
+		number = 0
+		ok     = true
+	)
 	if len(skip) > 0 {
 		number = skip[0]
 	}
-	ok := true
-	pc, file, line, start := callerFromIndex([]string{filter})
+	pc, file, line, start := callerFromIndex(filters)
 	if start != -1 {
-		for i := start + number; i < gMAX_DEPTH; i++ {
+		for i := start + number; i < maxCallerDepth; i++ {
 			if i != start {
 				pc, file, line, ok = runtime.Caller(i)
 			}
 			if ok {
-				if filter != "" && strings.Contains(file, filter) {
+				if filterFileByFilters(file, filters) {
 					continue
 				}
-				if strings.Contains(file, gFILTER_KEY) {
-					continue
-				}
-				function := ""
+				function = ""
 				if fn := runtime.FuncForPC(pc); fn == nil {
 					function = "unknown"
 				} else {
@@ -89,22 +88,12 @@ func CallerWithFilter(filter string, skip ...int) (function string, path string,
 // callerFromIndex returns the caller position and according information exclusive of the
 // debug package.
 //
-// VERY NOTE THAT, the returned index value should be <index - 1> as the caller's start point.
+// VERY NOTE THAT, the returned index value should be `index - 1` as the caller's start point.
 func callerFromIndex(filters []string) (pc uintptr, file string, line int, index int) {
-	var filtered, ok bool
-	for index = 0; index < gMAX_DEPTH; index++ {
+	var ok bool
+	for index = 0; index < maxCallerDepth; index++ {
 		if pc, file, line, ok = runtime.Caller(index); ok {
-			filtered = false
-			for _, filter := range filters {
-				if filter != "" && strings.Contains(file, filter) {
-					filtered = true
-					break
-				}
-			}
-			if filtered {
-				continue
-			}
-			if strings.Contains(file, gFILTER_KEY) {
+			if filterFileByFilters(file, filters) {
 				continue
 			}
 			if index > 0 {
@@ -114,6 +103,31 @@ func callerFromIndex(filters []string) (pc uintptr, file string, line int, index
 		}
 	}
 	return 0, "", -1, -1
+}
+
+func filterFileByFilters(file string, filters []string) (filtered bool) {
+	// Filter empty file.
+	if file == "" {
+		return true
+	}
+	// Filter gdebug package callings.
+	if strings.Contains(file, stackFilterKey) {
+		return true
+	}
+	for _, filter := range filters {
+		if filter != "" && strings.Contains(file, filter) {
+			return true
+		}
+	}
+	// GOROOT filter.
+	if goRootForFilter != "" && len(file) >= len(goRootForFilter) && file[0:len(goRootForFilter)] == goRootForFilter {
+		// https://github.com/gogf/gf/issues/2047
+		fileSeparator := file[len(goRootForFilter)]
+		if fileSeparator == filepath.Separator || fileSeparator == '\\' || fileSeparator == '/' {
+			return true
+		}
+	}
+	return false
 }
 
 // CallerPackage returns the package name of the caller.
@@ -163,12 +177,12 @@ func CallerFileLineShort() string {
 	return fmt.Sprintf(`%s:%d`, filepath.Base(path), line)
 }
 
-// FuncPath returns the complete function path of given <f>.
+// FuncPath returns the complete function path of given `f`.
 func FuncPath(f interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }
 
-// FuncName returns the function name of given <f>.
+// FuncName returns the function name of given `f`.
 func FuncName(f interface{}) string {
 	path := FuncPath(f)
 	if path == "" {

@@ -1,4 +1,4 @@
-// Copyright 2020 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,13 +7,14 @@
 package gvar_test
 
 import (
-	"github.com/gogf/gf/container/gvar"
-	"github.com/gogf/gf/frame/g"
-	"github.com/gogf/gf/test/gtest"
 	"testing"
+
+	"github.com/gogf/gf/v2/container/gvar"
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/test/gtest"
 )
 
-func Test_ListItemValues_Map(t *testing.T) {
+func TestVar_ListItemValues_Map(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		listMap := g.List{
 			g.Map{"id": 1, "score": 100},
@@ -34,7 +35,7 @@ func Test_ListItemValues_Map(t *testing.T) {
 	})
 }
 
-func Test_ListItemValues_Struct(t *testing.T) {
+func TestVar_ListItemValues_Struct(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		type T struct {
 			Id    int
@@ -78,7 +79,7 @@ func Test_ListItemValues_Struct(t *testing.T) {
 	})
 }
 
-func Test_ListItemValuesUnique(t *testing.T) {
+func TestVar_ListItemValuesUnique(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		listMap := g.List{
 			g.Map{"id": 1, "score": 100},

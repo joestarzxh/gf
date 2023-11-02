@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -8,124 +8,199 @@ package gdb
 
 import (
 	"fmt"
-	"github.com/gogf/gf/text/gstr"
+
+	"github.com/gogf/gf/v2/text/gstr"
 )
+
+// LeftJoin does "LEFT JOIN ... ON ..." statement on the model.
+// The parameter `table` can be joined table and its joined condition,
+// and also with its alias name.
+//
+// Eg:
+// Model("user").LeftJoin("user_detail", "user_detail.uid=user.uid")
+// Model("user", "u").LeftJoin("user_detail", "ud", "ud.uid=u.uid")
+// Model("user", "u").LeftJoin("SELECT xxx FROM xxx","a", "a.uid=u.uid").
+func (m *Model) LeftJoin(tableOrSubQueryAndJoinConditions ...string) *Model {
+	return m.doJoin(joinOperatorLeft, tableOrSubQueryAndJoinConditions...)
+}
+
+// RightJoin does "RIGHT JOIN ... ON ..." statement on the model.
+// The parameter `table` can be joined table and its joined condition,
+// and also with its alias name.
+//
+// Eg:
+// Model("user").RightJoin("user_detail", "user_detail.uid=user.uid")
+// Model("user", "u").RightJoin("user_detail", "ud", "ud.uid=u.uid")
+// Model("user", "u").RightJoin("SELECT xxx FROM xxx","a", "a.uid=u.uid").
+func (m *Model) RightJoin(tableOrSubQueryAndJoinConditions ...string) *Model {
+	return m.doJoin(joinOperatorRight, tableOrSubQueryAndJoinConditions...)
+}
+
+// InnerJoin does "INNER JOIN ... ON ..." statement on the model.
+// The parameter `table` can be joined table and its joined condition,
+// and also with its alias name。
+//
+// Eg:
+// Model("user").InnerJoin("user_detail", "user_detail.uid=user.uid")
+// Model("user", "u").InnerJoin("user_detail", "ud", "ud.uid=u.uid")
+// Model("user", "u").InnerJoin("SELECT xxx FROM xxx","a", "a.uid=u.uid").
+func (m *Model) InnerJoin(tableOrSubQueryAndJoinConditions ...string) *Model {
+	return m.doJoin(joinOperatorInner, tableOrSubQueryAndJoinConditions...)
+}
+
+// LeftJoinOnField performs as LeftJoin, but it joins both tables with the `same field name`.
+//
+// Eg:
+// Model("order").LeftJoinOnField("user", "user_id")
+// Model("order").LeftJoinOnField("product", "product_id").
+func (m *Model) LeftJoinOnField(table, field string) *Model {
+	return m.doJoin(joinOperatorLeft, table, fmt.Sprintf(
+		`%s.%s=%s.%s`,
+		m.tablesInit,
+		m.db.GetCore().QuoteWord(field),
+		m.db.GetCore().QuoteWord(table),
+		m.db.GetCore().QuoteWord(field),
+	))
+}
+
+// RightJoinOnField performs as RightJoin, but it joins both tables with the `same field name`.
+//
+// Eg:
+// Model("order").InnerJoinOnField("user", "user_id")
+// Model("order").InnerJoinOnField("product", "product_id").
+func (m *Model) RightJoinOnField(table, field string) *Model {
+	return m.doJoin(joinOperatorRight, table, fmt.Sprintf(
+		`%s.%s=%s.%s`,
+		m.tablesInit,
+		m.db.GetCore().QuoteWord(field),
+		m.db.GetCore().QuoteWord(table),
+		m.db.GetCore().QuoteWord(field),
+	))
+}
+
+// InnerJoinOnField performs as InnerJoin, but it joins both tables with the `same field name`.
+//
+// Eg:
+// Model("order").InnerJoinOnField("user", "user_id")
+// Model("order").InnerJoinOnField("product", "product_id").
+func (m *Model) InnerJoinOnField(table, field string) *Model {
+	return m.doJoin(joinOperatorInner, table, fmt.Sprintf(
+		`%s.%s=%s.%s`,
+		m.tablesInit,
+		m.db.GetCore().QuoteWord(field),
+		m.db.GetCore().QuoteWord(table),
+		m.db.GetCore().QuoteWord(field),
+	))
+}
+
+// LeftJoinOnFields performs as LeftJoin. It specifies different fields and comparison operator.
+//
+// Eg:
+// Model("user").LeftJoinOnFields("order", "id", "=", "user_id")
+// Model("user").LeftJoinOnFields("order", "id", ">", "user_id")
+// Model("user").LeftJoinOnFields("order", "id", "<", "user_id")
+func (m *Model) LeftJoinOnFields(table, firstField, operator, secondField string) *Model {
+	return m.doJoin(joinOperatorLeft, table, fmt.Sprintf(
+		`%s.%s %s %s.%s`,
+		m.tablesInit,
+		m.db.GetCore().QuoteWord(firstField),
+		operator,
+		m.db.GetCore().QuoteWord(table),
+		m.db.GetCore().QuoteWord(secondField),
+	))
+}
+
+// RightJoinOnFields performs as RightJoin. It specifies different fields and comparison operator.
+//
+// Eg:
+// Model("user").RightJoinOnFields("order", "id", "=", "user_id")
+// Model("user").RightJoinOnFields("order", "id", ">", "user_id")
+// Model("user").RightJoinOnFields("order", "id", "<", "user_id")
+func (m *Model) RightJoinOnFields(table, firstField, operator, secondField string) *Model {
+	return m.doJoin(joinOperatorRight, table, fmt.Sprintf(
+		`%s.%s %s %s.%s`,
+		m.tablesInit,
+		m.db.GetCore().QuoteWord(firstField),
+		operator,
+		m.db.GetCore().QuoteWord(table),
+		m.db.GetCore().QuoteWord(secondField),
+	))
+}
+
+// InnerJoinOnFields performs as InnerJoin. It specifies different fields and comparison operator.
+//
+// Eg:
+// Model("user").InnerJoinOnFields("order", "id", "=", "user_id")
+// Model("user").InnerJoinOnFields("order", "id", ">", "user_id")
+// Model("user").InnerJoinOnFields("order", "id", "<", "user_id")
+func (m *Model) InnerJoinOnFields(table, firstField, operator, secondField string) *Model {
+	return m.doJoin(joinOperatorInner, table, fmt.Sprintf(
+		`%s.%s %s %s.%s`,
+		m.tablesInit,
+		m.db.GetCore().QuoteWord(firstField),
+		operator,
+		m.db.GetCore().QuoteWord(table),
+		m.db.GetCore().QuoteWord(secondField),
+	))
+}
+
+// doJoin does "LEFT/RIGHT/INNER JOIN ... ON ..." statement on the model.
+// The parameter `tableOrSubQueryAndJoinConditions` can be joined table and its joined condition,
+// and also with its alias name.
+//
+// Eg:
+// Model("user").InnerJoin("user_detail", "user_detail.uid=user.uid")
+// Model("user", "u").InnerJoin("user_detail", "ud", "ud.uid=u.uid")
+// Model("user", "u").InnerJoin("user_detail", "ud", "ud.uid>u.uid")
+// Model("user", "u").InnerJoin("SELECT xxx FROM xxx","a", "a.uid=u.uid")
+// Related issues:
+// https://github.com/gogf/gf/issues/1024
+func (m *Model) doJoin(operator joinOperator, tableOrSubQueryAndJoinConditions ...string) *Model {
+	var (
+		model   = m.getModel()
+		joinStr = ""
+	)
+	// Check the first parameter table or sub-query.
+	if len(tableOrSubQueryAndJoinConditions) > 0 {
+		if isSubQuery(tableOrSubQueryAndJoinConditions[0]) {
+			joinStr = gstr.Trim(tableOrSubQueryAndJoinConditions[0])
+			if joinStr[0] != '(' {
+				joinStr = "(" + joinStr + ")"
+			}
+		} else {
+			joinStr = m.db.GetCore().QuotePrefixTableName(tableOrSubQueryAndJoinConditions[0])
+		}
+	}
+	// Generate join condition statement string.
+	conditionLength := len(tableOrSubQueryAndJoinConditions)
+	switch {
+	case conditionLength > 2:
+		model.tables += fmt.Sprintf(
+			" %s JOIN %s AS %s ON (%s)",
+			operator, joinStr,
+			m.db.GetCore().QuoteWord(tableOrSubQueryAndJoinConditions[1]),
+			tableOrSubQueryAndJoinConditions[2],
+		)
+	case conditionLength == 2:
+		model.tables += fmt.Sprintf(
+			" %s JOIN %s ON (%s)",
+			operator, joinStr, tableOrSubQueryAndJoinConditions[1],
+		)
+	case conditionLength == 1:
+		model.tables += fmt.Sprintf(
+			" %s JOIN %s", operator, joinStr,
+		)
+	}
+	return model
+}
 
 // isSubQuery checks and returns whether given string a sub-query sql string.
 func isSubQuery(s string) bool {
-	s = gstr.TrimLeft(s)
+	s = gstr.TrimLeft(s, "()")
 	if p := gstr.Pos(s, " "); p != -1 {
 		if gstr.Equal(s[:p], "select") {
 			return true
 		}
 	}
 	return false
-}
-
-// LeftJoin does "LEFT JOIN ... ON ..." statement on the model.
-// The parameter <table> can be joined table and its joined condition,
-// and also with its alias name, like:
-// Table("user").LeftJoin("user_detail", "user_detail.uid=user.uid")
-// Table("user", "u").LeftJoin("user_detail", "ud", "ud.uid=u.uid")
-func (m *Model) LeftJoin(table ...string) *Model {
-	var (
-		model   = m.getModel()
-		joinStr = ""
-	)
-	if len(table) > 0 {
-		if isSubQuery(table[0]) {
-			joinStr = "(" + table[0] + ")"
-		} else {
-			joinStr = m.db.QuotePrefixTableName(table[0])
-		}
-	}
-	if len(table) > 2 {
-		model.tables += fmt.Sprintf(
-			" LEFT JOIN %s AS %s ON (%s)",
-			joinStr, m.db.QuoteWord(table[1]), table[2],
-		)
-	} else if len(table) == 2 {
-		model.tables += fmt.Sprintf(
-			" LEFT JOIN %s ON (%s)",
-			joinStr, table[1],
-		)
-	} else if len(table) == 1 {
-		model.tables += fmt.Sprintf(
-			" LEFT JOIN %s",
-			joinStr,
-		)
-	}
-	return model
-}
-
-// RightJoin does "RIGHT JOIN ... ON ..." statement on the model.
-// The parameter <table> can be joined table and its joined condition,
-// and also with its alias name, like:
-// Table("user").RightJoin("user_detail", "user_detail.uid=user.uid")
-// Table("user", "u").RightJoin("user_detail", "ud", "ud.uid=u.uid")
-func (m *Model) RightJoin(table ...string) *Model {
-	var (
-		model   = m.getModel()
-		joinStr = ""
-	)
-	if len(table) > 0 {
-		if isSubQuery(table[0]) {
-			joinStr = "(" + table[0] + ")"
-		} else {
-			joinStr = m.db.QuotePrefixTableName(table[0])
-		}
-	}
-	if len(table) > 2 {
-		model.tables += fmt.Sprintf(
-			" RIGHT JOIN %s AS %s ON (%s)",
-			joinStr, m.db.QuoteWord(table[1]), table[2],
-		)
-	} else if len(table) == 2 {
-		model.tables += fmt.Sprintf(
-			" RIGHT JOIN %s ON (%s)",
-			joinStr, table[1],
-		)
-	} else if len(table) == 1 {
-		model.tables += fmt.Sprintf(
-			" RIGHT JOIN %s",
-			joinStr,
-		)
-	}
-	return model
-}
-
-// InnerJoin does "INNER JOIN ... ON ..." statement on the model.
-// The parameter <table> can be joined table and its joined condition,
-// and also with its alias name, like:
-// Table("user").InnerJoin("user_detail", "user_detail.uid=user.uid")
-// Table("user", "u").InnerJoin("user_detail", "ud", "ud.uid=u.uid")
-func (m *Model) InnerJoin(table ...string) *Model {
-	var (
-		model   = m.getModel()
-		joinStr = ""
-	)
-	if len(table) > 0 {
-		if isSubQuery(table[0]) {
-			joinStr = "(" + table[0] + ")"
-		} else {
-			joinStr = m.db.QuotePrefixTableName(table[0])
-		}
-	}
-	if len(table) > 2 {
-		model.tables += fmt.Sprintf(
-			" INNER JOIN %s AS %s ON (%s)",
-			joinStr, m.db.QuoteWord(table[1]), table[2],
-		)
-	} else if len(table) == 2 {
-		model.tables += fmt.Sprintf(
-			" INNER JOIN %s ON (%s)",
-			joinStr, table[1],
-		)
-	} else if len(table) == 1 {
-		model.tables += fmt.Sprintf(
-			" INNER JOIN %s",
-			joinStr,
-		)
-	}
-	return model
 }

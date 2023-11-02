@@ -1,4 +1,4 @@
-// Copyright 2017-2020 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -8,14 +8,15 @@
 package gfpool
 
 import (
-	"github.com/gogf/gf/container/gmap"
-	"github.com/gogf/gf/container/gpool"
-	"github.com/gogf/gf/container/gtype"
 	"os"
 	"time"
+
+	"github.com/gogf/gf/v2/container/gmap"
+	"github.com/gogf/gf/v2/container/gpool"
+	"github.com/gogf/gf/v2/container/gtype"
 )
 
-// File pointer pool.
+// Pool pointer pool.
 type Pool struct {
 	id   *gtype.Int    // Pool id, which is used to mark this pool whether recreated.
 	pool *gpool.Pool   // Underlying pool.

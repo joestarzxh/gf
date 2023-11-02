@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,6 +9,7 @@
 package gutil
 
 import (
+	"context"
 	"testing"
 )
 
@@ -22,10 +23,11 @@ var (
 )
 
 func Benchmark_TryCatch(b *testing.B) {
+	ctx := context.TODO()
 	for i := 0; i < b.N; i++ {
-		TryCatch(func() {
+		TryCatch(ctx, func(ctx context.Context) {
 
-		}, func(err interface{}) {
+		}, func(ctx context.Context, err error) {
 
 		})
 	}

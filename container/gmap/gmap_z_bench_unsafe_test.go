@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with gm file,
@@ -12,15 +12,21 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/gogf/gf/container/gmap"
+	"github.com/gogf/gf/v2/container/gmap"
 )
 
 var anyAnyMapUnsafe = gmap.New()
+
 var intIntMapUnsafe = gmap.NewIntIntMap()
+
 var intAnyMapUnsafe = gmap.NewIntAnyMap()
+
 var intStrMapUnsafe = gmap.NewIntStrMap()
+
 var strIntMapUnsafe = gmap.NewStrIntMap()
+
 var strAnyMapUnsafe = gmap.NewStrAnyMap()
+
 var strStrMapUnsafe = gmap.NewStrStrMap()
 
 // Writing benchmarks.

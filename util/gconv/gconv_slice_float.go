@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -6,33 +6,47 @@
 
 package gconv
 
+import (
+	"reflect"
+
+	"github.com/gogf/gf/v2/internal/json"
+	"github.com/gogf/gf/v2/internal/reflection"
+)
+
 // SliceFloat is alias of Floats.
-func SliceFloat(i interface{}) []float64 {
-	return Floats(i)
+func SliceFloat(any interface{}) []float64 {
+	return Floats(any)
 }
 
 // SliceFloat32 is alias of Float32s.
-func SliceFloat32(i interface{}) []float32 {
-	return Float32s(i)
+func SliceFloat32(any interface{}) []float32 {
+	return Float32s(any)
 }
 
 // SliceFloat64 is alias of Float64s.
-func SliceFloat64(i interface{}) []float64 {
-	return Floats(i)
+func SliceFloat64(any interface{}) []float64 {
+	return Floats(any)
 }
 
-// Floats converts <i> to []float64.
-func Floats(i interface{}) []float64 {
-	return Float64s(i)
+// Floats converts `any` to []float64.
+func Floats(any interface{}) []float64 {
+	return Float64s(any)
 }
 
-// Float32s converts <i> to []float32.
-func Float32s(i interface{}) []float32 {
-	if i == nil {
+// Float32s converts `any` to []float32.
+func Float32s(any interface{}) []float32 {
+	if any == nil {
 		return nil
 	}
-	var array []float32
-	switch value := i.(type) {
+	var (
+		array []float32 = nil
+	)
+	switch value := any.(type) {
+	case string:
+		if value == "" {
+			return []float32{}
+		}
+		return []float32{Float32(value)}
 	case []string:
 		array = make([]float32, len(value))
 		for k, v := range value {
@@ -68,9 +82,13 @@ func Float32s(i interface{}) []float32 {
 			array = append(array, Float32(v))
 		}
 	case []uint8:
-		array = make([]float32, len(value))
-		for k, v := range value {
-			array[k] = Float32(v)
+		if json.Valid(value) {
+			_ = json.UnmarshalUseNumber(value, &array)
+		} else {
+			array = make([]float32, len(value))
+			for k, v := range value {
+				array[k] = Float32(v)
+			}
 		}
 	case []uint16:
 		array = make([]float32, len(value))
@@ -104,25 +122,55 @@ func Float32s(i interface{}) []float32 {
 		for k, v := range value {
 			array[k] = Float32(v)
 		}
-	default:
-		if v, ok := i.(apiFloats); ok {
-			return Float32s(v.Floats())
-		}
-		if v, ok := i.(apiInterfaces); ok {
-			return Float32s(v.Interfaces())
-		}
-		return []float32{Float32(i)}
 	}
-	return array
+	if array != nil {
+		return array
+	}
+	if v, ok := any.(iFloats); ok {
+		return Float32s(v.Floats())
+	}
+	if v, ok := any.(iInterfaces); ok {
+		return Float32s(v.Interfaces())
+	}
+	// JSON format string value converting.
+	if checkJsonAndUnmarshalUseNumber(any, &array) {
+		return array
+	}
+	// Not a common type, it then uses reflection for conversion.
+	originValueAndKind := reflection.OriginValueAndKind(any)
+	switch originValueAndKind.OriginKind {
+	case reflect.Slice, reflect.Array:
+		var (
+			length = originValueAndKind.OriginValue.Len()
+			slice  = make([]float32, length)
+		)
+		for i := 0; i < length; i++ {
+			slice[i] = Float32(originValueAndKind.OriginValue.Index(i).Interface())
+		}
+		return slice
+
+	default:
+		if originValueAndKind.OriginValue.IsZero() {
+			return []float32{}
+		}
+		return []float32{Float32(any)}
+	}
 }
 
-// Float64s converts <i> to []float64.
-func Float64s(i interface{}) []float64 {
-	if i == nil {
+// Float64s converts `any` to []float64.
+func Float64s(any interface{}) []float64 {
+	if any == nil {
 		return nil
 	}
-	var array []float64
-	switch value := i.(type) {
+	var (
+		array []float64 = nil
+	)
+	switch value := any.(type) {
+	case string:
+		if value == "" {
+			return []float64{}
+		}
+		return []float64{Float64(value)}
 	case []string:
 		array = make([]float64, len(value))
 		for k, v := range value {
@@ -158,9 +206,13 @@ func Float64s(i interface{}) []float64 {
 			array = append(array, Float64(v))
 		}
 	case []uint8:
-		array = make([]float64, len(value))
-		for k, v := range value {
-			array[k] = Float64(v)
+		if json.Valid(value) {
+			_ = json.UnmarshalUseNumber(value, &array)
+		} else {
+			array = make([]float64, len(value))
+			for k, v := range value {
+				array[k] = Float64(v)
+			}
 		}
 	case []uint16:
 		array = make([]float64, len(value))
@@ -194,15 +246,37 @@ func Float64s(i interface{}) []float64 {
 		for k, v := range value {
 			array[k] = Float64(v)
 		}
-	default:
-		if v, ok := i.(apiFloats); ok {
-			return v.Floats()
-		}
-		if v, ok := i.(apiInterfaces); ok {
-			return Floats(v.Interfaces())
-		}
-		return []float64{Float64(i)}
 	}
-	return array
+	if array != nil {
+		return array
+	}
+	if v, ok := any.(iFloats); ok {
+		return v.Floats()
+	}
+	if v, ok := any.(iInterfaces); ok {
+		return Floats(v.Interfaces())
+	}
+	// JSON format string value converting.
+	if checkJsonAndUnmarshalUseNumber(any, &array) {
+		return array
+	}
+	// Not a common type, it then uses reflection for conversion.
+	originValueAndKind := reflection.OriginValueAndKind(any)
+	switch originValueAndKind.OriginKind {
+	case reflect.Slice, reflect.Array:
+		var (
+			length = originValueAndKind.OriginValue.Len()
+			slice  = make([]float64, length)
+		)
+		for i := 0; i < length; i++ {
+			slice[i] = Float64(originValueAndKind.OriginValue.Index(i).Interface())
+		}
+		return slice
 
+	default:
+		if originValueAndKind.OriginValue.IsZero() {
+			return []float64{}
+		}
+		return []float64{Float64(any)}
+	}
 }

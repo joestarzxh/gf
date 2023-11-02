@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -8,18 +8,21 @@
 package gfsnotify
 
 import (
-	"errors"
-	"fmt"
-	"github.com/gogf/gf/container/gset"
-	"github.com/gogf/gf/internal/intlog"
+	"context"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/gogf/gf/container/glist"
-	"github.com/gogf/gf/container/gmap"
-	"github.com/gogf/gf/container/gqueue"
-	"github.com/gogf/gf/container/gtype"
-	"github.com/gogf/gf/os/gcache"
+
+	"github.com/gogf/gf/v2/container/glist"
+	"github.com/gogf/gf/v2/container/gmap"
+	"github.com/gogf/gf/v2/container/gqueue"
+	"github.com/gogf/gf/v2/container/gset"
+	"github.com/gogf/gf/v2/container/gtype"
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/internal/intlog"
+	"github.com/gogf/gf/v2/os/gcache"
 )
 
 // Watcher is the monitor for file changes.
@@ -53,6 +56,9 @@ type Event struct {
 // Op is the bits union for file operations.
 type Op uint32
 
+// internalPanic is the custom panic for internal usage.
+type internalPanic string
+
 const (
 	CREATE Op = 1 << iota
 	WRITE
@@ -62,24 +68,16 @@ const (
 )
 
 const (
-	repeatEventFilterDuration = time.Millisecond // Duration for repeated event filter.
-	callbackExitEventPanicStr = "exit"           // Custom exit event for internal usage.
+	repeatEventFilterDuration               = time.Millisecond // Duration for repeated event filter.
+	callbackExitEventPanicStr internalPanic = "exit"           // Custom exit event for internal usage.
 )
 
 var (
+	mu                  sync.Mutex                // Mutex for concurrent safety of defaultWatcher.
 	defaultWatcher      *Watcher                  // Default watcher.
 	callbackIdMap       = gmap.NewIntAnyMap(true) // Id to callback mapping.
 	callbackIdGenerator = gtype.NewInt()          // Atomic id generator for callback.
 )
-
-func init() {
-	var err error
-	defaultWatcher, err = New()
-	if err != nil {
-		// Default watcher object must be created, or else it panics.
-		panic(fmt.Sprintf(`creating default fsnotify watcher failed: %s`, err.Error()))
-	}
-}
 
 // New creates and returns a new watcher.
 // Note that the watcher number is limited by the file handle setting of the system.
@@ -95,44 +93,60 @@ func New() (*Watcher, error) {
 	if watcher, err := fsnotify.NewWatcher(); err == nil {
 		w.watcher = watcher
 	} else {
-		intlog.Printf("New watcher failed: %v", err)
+		intlog.Printf(context.TODO(), "New watcher failed: %v", err)
 		return nil, err
 	}
-	w.startWatchLoop()
-	w.startEventLoop()
+	w.watchLoop()
+	w.eventLoop()
 	return w, nil
 }
 
-// Add monitors <path> using default watcher with callback function <callbackFunc>.
-// The optional parameter <recursive> specifies whether monitoring the <path> recursively, which is true in default.
+// Add monitors `path` using default watcher with callback function `callbackFunc`.
+// The optional parameter `recursive` specifies whether monitoring the `path` recursively, which is true in default.
 func Add(path string, callbackFunc func(event *Event), recursive ...bool) (callback *Callback, err error) {
-	return defaultWatcher.Add(path, callbackFunc, recursive...)
+	w, err := getDefaultWatcher()
+	if err != nil {
+		return nil, err
+	}
+	return w.Add(path, callbackFunc, recursive...)
 }
 
-// AddOnce monitors <path> using default watcher with callback function <callbackFunc> only once using unique name <name>.
-// If AddOnce is called multiple times with the same <name> parameter, <path> is only added to monitor once. It returns error
-// if it's called twice with the same <name>.
+// AddOnce monitors `path` using default watcher with callback function `callbackFunc` only once using unique name `name`.
+// If AddOnce is called multiple times with the same `name` parameter, `path` is only added to monitor once. It returns error
+// if it's called twice with the same `name`.
 //
-// The optional parameter <recursive> specifies whether monitoring the <path> recursively, which is true in default.
+// The optional parameter `recursive` specifies whether monitoring the `path` recursively, which is true in default.
 func AddOnce(name, path string, callbackFunc func(event *Event), recursive ...bool) (callback *Callback, err error) {
-	return defaultWatcher.AddOnce(name, path, callbackFunc, recursive...)
+	w, err := getDefaultWatcher()
+	if err != nil {
+		return nil, err
+	}
+	return w.AddOnce(name, path, callbackFunc, recursive...)
 }
 
-// Remove removes all monitoring callbacks of given <path> from watcher recursively.
+// Remove removes all monitoring callbacks of given `path` from watcher recursively.
 func Remove(path string) error {
-	return defaultWatcher.Remove(path)
+	w, err := getDefaultWatcher()
+	if err != nil {
+		return err
+	}
+	return w.Remove(path)
 }
 
 // RemoveCallback removes specified callback with given id from watcher.
 func RemoveCallback(callbackId int) error {
+	w, err := getDefaultWatcher()
+	if err != nil {
+		return err
+	}
 	callback := (*Callback)(nil)
 	if r := callbackIdMap.Get(callbackId); r != nil {
 		callback = r.(*Callback)
 	}
 	if callback == nil {
-		return errors.New(fmt.Sprintf(`callback for id %d not found`, callbackId))
+		return gerror.NewCodef(gcode.CodeInvalidParameter, `callback for id %d not found`, callbackId)
 	}
-	defaultWatcher.RemoveCallback(callbackId)
+	w.RemoveCallback(callbackId)
 	return nil
 }
 
@@ -140,4 +154,17 @@ func RemoveCallback(callbackId int) error {
 // of itself from the watcher.
 func Exit() {
 	panic(callbackExitEventPanicStr)
+}
+
+// getDefaultWatcher creates and returns the default watcher.
+// This is used for lazy initialization purpose.
+func getDefaultWatcher() (*Watcher, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	if defaultWatcher != nil {
+		return defaultWatcher, nil
+	}
+	var err error
+	defaultWatcher, err = New()
+	return defaultWatcher, err
 }

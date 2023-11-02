@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -13,10 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogf/gf/container/gpool"
+	"github.com/gogf/gf/v2/container/gpool"
 )
 
 var pool = gpool.New(time.Hour, nil)
+
 var syncp = sync.Pool{}
 
 func BenchmarkGPoolPut(b *testing.B) {

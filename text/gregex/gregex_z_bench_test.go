@@ -1,4 +1,4 @@
-// Copyright 2017-2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -12,10 +12,11 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/gogf/gf/text/gregex"
+	"github.com/gogf/gf/v2/text/gregex"
 )
 
 var pattern = `(\w+).+\-\-\s*(.+)`
+
 var src = `GF is best! -- John`
 
 func Benchmark_GF_IsMatchString(b *testing.B) {

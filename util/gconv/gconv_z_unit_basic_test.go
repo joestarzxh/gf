@@ -1,4 +1,4 @@
-// Copyright 2018 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -9,8 +9,8 @@ package gconv_test
 import (
 	"testing"
 
-	"github.com/gogf/gf/test/gtest"
-	"github.com/gogf/gf/util/gconv"
+	"github.com/gogf/gf/v2/test/gtest"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
 func Test_Basic(t *testing.T) {
@@ -38,5 +38,23 @@ func Test_Basic(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		s := "-0xFF"
 		t.Assert(gconv.Int(s), int64(-0xFF))
+	})
+}
+
+func Test_Duration(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		d := gconv.Duration("1s")
+		t.Assert(d.String(), "1s")
+		t.Assert(d.Nanoseconds(), 1000000000)
+	})
+}
+
+func Test_ConvertWithRefer(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		t.AssertEQ(gconv.ConvertWithRefer("1", 100), 1)
+		t.AssertEQ(gconv.ConvertWithRefer("1.01", 1.111), 1.01)
+		t.AssertEQ(gconv.ConvertWithRefer("1.01", "1.111"), "1.01")
+		t.AssertEQ(gconv.ConvertWithRefer("1.01", false), true)
+		t.AssertNE(gconv.ConvertWithRefer("1.01", false), false)
 	})
 }

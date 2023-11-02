@@ -1,4 +1,4 @@
-// Copyright 2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -12,16 +12,16 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gogf/gf/text/gstr"
+	"github.com/gogf/gf/v2/text/gstr"
 )
 
-// Scan prints <info> to stdout, reads and returns user input, which stops by '\n'.
+// Scan prints `info` to stdout, reads and returns user input, which stops by '\n'.
 func Scan(info ...interface{}) string {
 	fmt.Print(info...)
 	return readline()
 }
 
-// Scanf prints <info> to stdout with <format>, reads and returns user input, which stops by '\n'.
+// Scanf prints `info` to stdout with `format`, reads and returns user input, which stops by '\n'.
 func Scanf(format string, info ...interface{}) string {
 	fmt.Printf(format, info...)
 	return readline()

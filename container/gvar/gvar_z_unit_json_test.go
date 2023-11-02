@@ -1,4 +1,4 @@
-// Copyright 2020 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,14 +7,15 @@
 package gvar_test
 
 import (
-	"github.com/gogf/gf/container/gvar"
-	"github.com/gogf/gf/internal/json"
-	"github.com/gogf/gf/test/gtest"
 	"math"
 	"testing"
+
+	"github.com/gogf/gf/v2/container/gvar"
+	"github.com/gogf/gf/v2/internal/json"
+	"github.com/gogf/gf/v2/test/gtest"
 )
 
-func Test_Json(t *testing.T) {
+func TestVar_Json(t *testing.T) {
 	// Marshal
 	gtest.C(t, func(t *gtest.T) {
 		s := "i love gf"
@@ -39,10 +40,10 @@ func Test_Json(t *testing.T) {
 		s := "i love gf"
 		v := gvar.New(nil)
 		b, err := json.Marshal(s)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 
-		err = json.Unmarshal(b, v)
-		t.Assert(err, nil)
+		err = json.UnmarshalUseNumber(b, v)
+		t.AssertNil(err)
 		t.Assert(v.String(), s)
 	})
 
@@ -50,10 +51,10 @@ func Test_Json(t *testing.T) {
 		var v gvar.Var
 		s := "i love gf"
 		b, err := json.Marshal(s)
-		t.Assert(err, nil)
+		t.AssertNil(err)
 
-		err = json.Unmarshal(b, &v)
-		t.Assert(err, nil)
+		err = json.UnmarshalUseNumber(b, &v)
+		t.AssertNil(err)
 		t.Assert(v.String(), s)
 	})
 }

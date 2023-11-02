@@ -1,4 +1,4 @@
-// Copyright 2017-2019 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with gm file,
@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/gogf/gf/container/gtree"
-	"github.com/gogf/gf/container/gvar"
-	"github.com/gogf/gf/test/gtest"
-	"github.com/gogf/gf/util/gutil"
+	"github.com/gogf/gf/v2/container/gtree"
+	"github.com/gogf/gf/v2/container/gvar"
+	"github.com/gogf/gf/v2/test/gtest"
+	"github.com/gogf/gf/v2/util/gutil"
 )
 
 func Test_BTree_Basic(t *testing.T) {

@@ -1,4 +1,4 @@
-// Copyright 2017 gf Author(https://github.com/gogf/gf). All Rights Reserved.
+// Copyright GoFrame Author(https://goframe.org). All Rights Reserved.
 //
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT was not distributed with this file,
@@ -7,109 +7,218 @@
 package gdb
 
 import (
+	"context"
 	"fmt"
-	"github.com/gogf/gf/text/gregex"
-	"time"
 
-	"github.com/gogf/gf/text/gstr"
+	"github.com/gogf/gf/v2/text/gregex"
+	"github.com/gogf/gf/v2/text/gstr"
+	"github.com/gogf/gf/v2/util/gconv"
 )
 
-// Model is the DAO for ORM.
+// Model is core struct implementing the DAO for ORM.
 type Model struct {
-	db            DB             // Underlying DB interface.
-	tx            *TX            // Underlying TX interface.
-	schema        string         // Custom database schema.
-	linkType      int            // Mark for operation on master or slave.
-	tablesInit    string         // Table names when model initialization.
-	tables        string         // Operation table names, which can be more than one table names and aliases, like: "user", "user u", "user u, user_detail ud".
-	fields        string         // Operation fields, multiple fields joined using char ','.
-	fieldsEx      string         // Excluded operation fields, multiple fields joined using char ','.
-	extraArgs     []interface{}  // Extra custom arguments for sql.
-	whereHolder   []*whereHolder // Condition strings for where operation.
-	groupBy       string         // Used for "group by" statement.
-	orderBy       string         // Used for "order by" statement.
-	having        []interface{}  // Used for "having..." statement.
-	start         int            // Used for "select ... start, limit ..." statement.
-	limit         int            // Used for "select ... start, limit ..." statement.
-	option        int            // Option for extra operation features.
-	offset        int            // Offset statement for some databases grammar.
-	data          interface{}    // Data for operation, which can be type of map/[]map/struct/*struct/string, etc.
-	batch         int            // Batch number for batch Insert/Replace/Save operations.
-	filter        bool           // Filter data and where key-value pairs according to the fields of the table.
-	lockInfo      string         // Lock for update or in shared lock.
-	cacheEnabled  bool           // Enable sql result cache feature.
-	cacheDuration time.Duration  // Cache TTL duration.
-	cacheName     string         // Cache name for custom operation.
-	unscoped      bool           // Disables soft deleting features when select/delete operations.
-	safe          bool           // If true, it clones and returns a new model object whenever operation done; or else it changes the attribute of current model.
+	db            DB            // Underlying DB interface.
+	tx            TX            // Underlying TX interface.
+	rawSql        string        // rawSql is the raw SQL string which marks a raw SQL based Model not a table based Model.
+	schema        string        // Custom database schema.
+	linkType      int           // Mark for operation on master or slave.
+	tablesInit    string        // Table names when model initialization.
+	tables        string        // Operation table names, which can be more than one table names and aliases, like: "user", "user u", "user u, user_detail ud".
+	fields        string        // Operation fields, multiple fields joined using char ','.
+	fieldsEx      string        // Excluded operation fields, multiple fields joined using char ','.
+	withArray     []interface{} // Arguments for With feature.
+	withAll       bool          // Enable model association operations on all objects that have "with" tag in the struct.
+	extraArgs     []interface{} // Extra custom arguments for sql, which are prepended to the arguments before sql committed to underlying driver.
+	whereBuilder  *WhereBuilder // Condition builder for where operation.
+	groupBy       string        // Used for "group by" statement.
+	orderBy       string        // Used for "order by" statement.
+	having        []interface{} // Used for "having..." statement.
+	start         int           // Used for "select ... start, limit ..." statement.
+	limit         int           // Used for "select ... start, limit ..." statement.
+	option        int           // Option for extra operation features.
+	offset        int           // Offset statement for some databases grammar.
+	partition     string        // Partition table partition name.
+	data          interface{}   // Data for operation, which can be type of map/[]map/struct/*struct/string, etc.
+	batch         int           // Batch number for batch Insert/Replace/Save operations.
+	filter        bool          // Filter data and where key-value pairs according to the fields of the table.
+	distinct      string        // Force the query to only return distinct results.
+	lockInfo      string        // Lock for update or in shared lock.
+	cacheEnabled  bool          // Enable sql result cache feature, which is mainly for indicating cache duration(especially 0) usage.
+	cacheOption   CacheOption   // Cache option for query statement.
+	hookHandler   HookHandler   // Hook functions for model hook feature.
+	unscoped      bool          // Disables soft deleting features when select/delete operations.
+	safe          bool          // If true, it clones and returns a new model object whenever operation done; or else it changes the attribute of current model.
+	onDuplicate   interface{}   // onDuplicate is used for ON "DUPLICATE KEY UPDATE" statement.
+	onDuplicateEx interface{}   // onDuplicateEx is used for excluding some columns ON "DUPLICATE KEY UPDATE" statement.
 }
 
-// whereHolder is the holder for where condition preparing.
-type whereHolder struct {
-	operator int           // Operator for this holder.
-	where    interface{}   // Where parameter.
-	args     []interface{} // Arguments for where parameter.
-}
+// ModelHandler is a function that handles given Model and returns a new Model that is custom modified.
+type ModelHandler func(m *Model) *Model
+
+// ChunkHandler is a function that is used in function Chunk, which handles given Result and error.
+// It returns true if it wants to continue chunking, or else it returns false to stop chunking.
+type ChunkHandler func(result Result, err error) bool
 
 const (
-	gLINK_TYPE_MASTER   = 1
-	gLINK_TYPE_SLAVE    = 2
-	gWHERE_HOLDER_WHERE = 1
-	gWHERE_HOLDER_AND   = 2
-	gWHERE_HOLDER_OR    = 3
-	OPTION_OMITEMPTY    = 1 << iota
-	OPTION_ALLOWEMPTY
+	linkTypeMaster           = 1
+	linkTypeSlave            = 2
+	defaultFields            = "*"
+	whereHolderOperatorWhere = 1
+	whereHolderOperatorAnd   = 2
+	whereHolderOperatorOr    = 3
+	whereHolderTypeDefault   = "Default"
+	whereHolderTypeNoArgs    = "NoArgs"
+	whereHolderTypeIn        = "In"
 )
 
-// Table creates and returns a new ORM model from given schema.
-// The parameter <table> can be more than one table names, and also alias name, like:
-// 1. Table names:
-//    Table("user")
-//    Table("user u")
-//    Table("user, user_detail")
-//    Table("user u, user_detail ud")
-// 2. Table name with alias: Table("user", "u")
-func (c *Core) Table(table ...string) *Model {
-	tables := ""
-	if len(table) > 1 {
-		tables = fmt.Sprintf(
-			`%s AS %s`, c.DB.QuotePrefixTableName(table[0]), c.DB.QuoteWord(table[1]),
-		)
-	} else if len(table) == 1 {
-		tables = c.DB.QuotePrefixTableName(table[0])
-	} else {
-		panic("table cannot be empty")
+// Model creates and returns a new ORM model from given schema.
+// The parameter `tableNameQueryOrStruct` can be more than one table names, and also alias name, like:
+//  1. Model names:
+//     db.Model("user")
+//     db.Model("user u")
+//     db.Model("user, user_detail")
+//     db.Model("user u, user_detail ud")
+//  2. Model name with alias:
+//     db.Model("user", "u")
+//  3. Model name with sub-query:
+//     db.Model("? AS a, ? AS b", subQuery1, subQuery2)
+func (c *Core) Model(tableNameQueryOrStruct ...interface{}) *Model {
+	var (
+		ctx       = c.db.GetCtx()
+		tableStr  string
+		tableName string
+		extraArgs []interface{}
+	)
+	// Model creation with sub-query.
+	if len(tableNameQueryOrStruct) > 1 {
+		conditionStr := gconv.String(tableNameQueryOrStruct[0])
+		if gstr.Contains(conditionStr, "?") {
+			whereHolder := WhereHolder{
+				Where: conditionStr,
+				Args:  tableNameQueryOrStruct[1:],
+			}
+			tableStr, extraArgs = formatWhereHolder(ctx, c.db, formatWhereHolderInput{
+				WhereHolder: whereHolder,
+				OmitNil:     false,
+				OmitEmpty:   false,
+				Schema:      "",
+				Table:       "",
+			})
+		}
 	}
-	return &Model{
-		db:         c.DB,
-		tablesInit: tables,
-		tables:     tables,
-		fields:     "*",
+	// Normal model creation.
+	if tableStr == "" {
+		tableNames := make([]string, len(tableNameQueryOrStruct))
+		for k, v := range tableNameQueryOrStruct {
+			if s, ok := v.(string); ok {
+				tableNames[k] = s
+			} else if tableName = getTableNameFromOrmTag(v); tableName != "" {
+				tableNames[k] = tableName
+			}
+		}
+		if len(tableNames) > 1 {
+			tableStr = fmt.Sprintf(
+				`%s AS %s`, c.QuotePrefixTableName(tableNames[0]), c.QuoteWord(tableNames[1]),
+			)
+		} else if len(tableNames) == 1 {
+			tableStr = c.QuotePrefixTableName(tableNames[0])
+		}
+	}
+	m := &Model{
+		db:         c.db,
+		schema:     c.schema,
+		tablesInit: tableStr,
+		tables:     tableStr,
+		fields:     defaultFields,
 		start:      -1,
 		offset:     -1,
-		option:     OPTION_ALLOWEMPTY,
+		filter:     true,
+		extraArgs:  extraArgs,
 	}
+	m.whereBuilder = m.Builder()
+	if defaultModelSafe {
+		m.safe = true
+	}
+	return m
 }
 
-// Model is alias of Core.Table.
-// See Core.Table.
-func (c *Core) Model(table ...string) *Model {
-	return c.DB.Table(table...)
+// Raw creates and returns a model based on a raw sql not a table.
+// Example:
+//
+//	db.Raw("SELECT * FROM `user` WHERE `name` = ?", "john").Scan(&result)
+func (c *Core) Raw(rawSql string, args ...interface{}) *Model {
+	model := c.Model()
+	model.rawSql = rawSql
+	model.extraArgs = args
+	return model
 }
 
-// Table acts like Core.Table except it operates on transaction.
-// See Core.Table.
-func (tx *TX) Table(table ...string) *Model {
-	model := tx.db.Table(table...)
+// Raw sets current model as a raw sql model.
+// Example:
+//
+//	db.Raw("SELECT * FROM `user` WHERE `name` = ?", "john").Scan(&result)
+//
+// See Core.Raw.
+func (m *Model) Raw(rawSql string, args ...interface{}) *Model {
+	model := m.db.Raw(rawSql, args...)
+	model.db = m.db
+	model.tx = m.tx
+	return model
+}
+
+func (tx *TXCore) Raw(rawSql string, args ...interface{}) *Model {
+	return tx.Model().Raw(rawSql, args...)
+}
+
+// With creates and returns an ORM model based on metadata of given object.
+func (c *Core) With(objects ...interface{}) *Model {
+	return c.db.Model().With(objects...)
+}
+
+// Partition sets Partition name.
+// Example:
+// dao.User.Ctx(ctx).Partition（"p1","p2","p3").All()
+func (m *Model) Partition(partitions ...string) *Model {
+	model := m.getModel()
+	model.partition = gstr.Join(partitions, ",")
+	return model
+}
+
+// Model acts like Core.Model except it operates on transaction.
+// See Core.Model.
+func (tx *TXCore) Model(tableNameQueryOrStruct ...interface{}) *Model {
+	model := tx.db.Model(tableNameQueryOrStruct...)
 	model.db = tx.db
 	model.tx = tx
 	return model
 }
 
-// Model is alias of tx.Table.
-// See tx.Table.
-func (tx *TX) Model(table ...string) *Model {
-	return tx.Table(table...)
+// With acts like Core.With except it operates on transaction.
+// See Core.With.
+func (tx *TXCore) With(object interface{}) *Model {
+	return tx.Model().With(object)
+}
+
+// Ctx sets the context for current operation.
+func (m *Model) Ctx(ctx context.Context) *Model {
+	if ctx == nil {
+		return m
+	}
+	model := m.getModel()
+	model.db = model.db.Ctx(ctx)
+	if m.tx != nil {
+		model.tx = model.tx.Ctx(ctx)
+	}
+	return model
+}
+
+// GetCtx returns the context for current Model.
+// It returns `context.Background()` is there's no context previously set.
+func (m *Model) GetCtx() context.Context {
+	if m.tx != nil && m.tx.GetCtx() != nil {
+		return m.tx.GetCtx()
+	}
+	return m.db.GetCtx()
 }
 
 // As sets an alias name for current table.
@@ -117,7 +226,7 @@ func (m *Model) As(as string) *Model {
 	if m.tables != "" {
 		model := m.getModel()
 		split := " JOIN "
-		if gstr.Contains(model.tables, split) {
+		if gstr.ContainsI(model.tables, split) {
 			// For join table.
 			array := gstr.Split(model.tables, split)
 			array[len(array)-1], _ = gregex.ReplaceString(`(.+) ON`, fmt.Sprintf(`$1 AS %s ON`, as), array[len(array)-1])
@@ -139,8 +248,9 @@ func (m *Model) DB(db DB) *Model {
 }
 
 // TX sets/changes the transaction for current operation.
-func (m *Model) TX(tx *TX) *Model {
+func (m *Model) TX(tx TX) *Model {
 	model := m.getModel()
+	model.db = tx.GetDB()
 	model.tx = tx
 	return model
 }
@@ -152,24 +262,28 @@ func (m *Model) Schema(schema string) *Model {
 	return model
 }
 
-// Clone creates and returns a new model which is a clone of current model.
-// Note that it uses deep-copy for the clone.
+// Clone creates and returns a new model which is a Clone of current model.
+// Note that it uses deep-copy for the Clone.
 func (m *Model) Clone() *Model {
 	newModel := (*Model)(nil)
 	if m.tx != nil {
-		newModel = m.tx.Table(m.tablesInit)
+		newModel = m.tx.Model(m.tablesInit)
 	} else {
-		newModel = m.db.Table(m.tablesInit)
+		newModel = m.db.Model(m.tablesInit)
 	}
+	// Basic attributes copy.
 	*newModel = *m
-	// Deep copy slice attributes.
+	// WhereBuilder copy, note the attribute pointer.
+	newModel.whereBuilder = m.whereBuilder.Clone()
+	newModel.whereBuilder.model = newModel
+	// Shallow copy slice attributes.
 	if n := len(m.extraArgs); n > 0 {
 		newModel.extraArgs = make([]interface{}, n)
 		copy(newModel.extraArgs, m.extraArgs)
 	}
-	if n := len(m.whereHolder); n > 0 {
-		newModel.whereHolder = make([]*whereHolder, n)
-		copy(newModel.whereHolder, m.whereHolder)
+	if n := len(m.withArray); n > 0 {
+		newModel.withArray = make([]interface{}, n)
+		copy(newModel.withArray, m.withArray)
 	}
 	return newModel
 }
@@ -177,7 +291,7 @@ func (m *Model) Clone() *Model {
 // Master marks the following operation on master node.
 func (m *Model) Master() *Model {
 	model := m.getModel()
-	model.linkType = gLINK_TYPE_MASTER
+	model.linkType = linkTypeMaster
 	return model
 }
 
@@ -185,7 +299,7 @@ func (m *Model) Master() *Model {
 // Note that it makes sense only if there's any slave node configured.
 func (m *Model) Slave() *Model {
 	model := m.getModel()
-	model.linkType = gLINK_TYPE_SLAVE
+	model.linkType = linkTypeSlave
 	return model
 }
 
@@ -198,4 +312,21 @@ func (m *Model) Safe(safe ...bool) *Model {
 		m.safe = true
 	}
 	return m
+}
+
+// Args sets custom arguments for model operation.
+func (m *Model) Args(args ...interface{}) *Model {
+	model := m.getModel()
+	model.extraArgs = append(model.extraArgs, args)
+	return model
+}
+
+// Handler calls each of `handlers` on current Model and returns a new Model.
+// ModelHandler is a function that handles given Model and returns a new Model that is custom modified.
+func (m *Model) Handler(handlers ...ModelHandler) *Model {
+	model := m.getModel()
+	for _, handler := range handlers {
+		model = handler(model)
+	}
+	return model
 }
