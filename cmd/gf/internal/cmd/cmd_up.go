@@ -13,14 +13,15 @@ import (
 
 	"github.com/gogf/selfupdate"
 
-	"github.com/gogf/gf/cmd/gf/v2/internal/utility/mlog"
-	"github.com/gogf/gf/cmd/gf/v2/internal/utility/utils"
 	"github.com/gogf/gf/v2/container/gset"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/gogf/gf/v2/os/gproc"
 	"github.com/gogf/gf/v2/text/gstr"
 	"github.com/gogf/gf/v2/util/gtag"
+
+	"github.com/gogf/gf/cmd/gf/v2/internal/utility/mlog"
+	"github.com/gogf/gf/cmd/gf/v2/internal/utility/utils"
 )
 
 var (
@@ -142,8 +143,9 @@ func (c cUp) doUpgradeVersion(ctx context.Context, in cUpInput) (out *doUpgradeV
 			}
 			for _, pkg := range packages {
 				mlog.Printf(`upgrading "%s" from "%s" to "latest"`, pkg.Name, pkg.Version)
-				// go get -u
-				command := fmt.Sprintf(`cd %s && go get -u %s@latest`, dirPath, pkg.Name)
+				mlog.Printf(`running command: go get %s@latest`, pkg.Name)
+				// go get @latest
+				command := fmt.Sprintf(`cd %s && go get %s@latest`, dirPath, pkg.Name)
 				if err = gproc.ShellRun(ctx, command); err != nil {
 					return
 				}
@@ -191,7 +193,7 @@ func (c cUp) doUpgradeCLI(ctx context.Context) (err error) {
 	defer func() {
 		mlog.Printf(`new version cli binary is successfully installed to "%s"`, gfile.SelfPath())
 		mlog.Printf(`remove temporary buffer file "%s"`, localSaveFilePath)
-		_ = gfile.Remove(localSaveFilePath)
+		_ = gfile.RemoveFile(localSaveFilePath)
 	}()
 
 	// It fails if file not exist or its size is less than 1MB.
